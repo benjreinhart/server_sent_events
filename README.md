@@ -13,16 +13,20 @@ IO.inspect(rest)     # ""
 Parsing a chunk containing zero or more events followed by an incomplete event returns the incomplete data.
 
 ```elixir
-{events, rest} = ServerSentEvents.parse("event: event\ndata: {\"complete\":")
+{events, buffer} = ServerSentEvents.parse("event: event\ndata: {\"complete\":")
 IO.inspect(events)   # []
-IO.inspect(rest)     # "event: event\ndata: {\"complete\":"
+IO.inspect(buffer)   # "event: event\ndata: {\"complete\":"
 
-{events, rest} = ServerSentEvents.parse("event: event\ndata: {\"complete\":true}\n\nevent: event\ndata: {")
+{events, buffer} = ServerSentEvents.parse(buffer <> "true}\n\nevent: event\ndata: {")
 IO.inspect(events)   # [%{"event" => "event", "data" => "{\"complete\":true}\n"}]
-IO.inspect(rest)     # "event: event\ndata: {"
+IO.inspect(buffer)   # "event: event\ndata: {"
+
+{events, rest} = ServerSentEvents.parse(buffer <> "\"key\":\"value\"}\n\n")
+IO.inspect(events)   # [%{"event" => "event", "data" => "{\"key\":\"value\"}\n"}]
+IO.inspect(rest)     # ""
 ```
 
-This can be useful for environments where chunks may not arrive in one piece.
+This can be useful for environments where events may not reliably arrive in one piece.
 
 ## Installation
 
