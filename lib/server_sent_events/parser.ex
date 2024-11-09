@@ -21,14 +21,11 @@ defmodule ServerSentEvents.Parser do
   end
 
   defp parse_event(<<"\r", rest::binary>>, event) do
-    case rest do
-      <<"\n", rest::binary>> -> {event, rest}
-      _ -> {event, rest}
-    end
+    {event, ignore_leading(rest, "\n")}
   end
 
   defp parse_event(<<"data:", rest::binary>>, event) do
-    case rest |> ignore_single_leading_space() |> take_line([]) do
+    case rest |> ignore_leading(" ") |> take_line([]) do
       nil ->
         nil
 
@@ -43,7 +40,7 @@ defmodule ServerSentEvents.Parser do
   end
 
   defp parse_event(<<"event:", rest::binary>>, event) do
-    case rest |> ignore_single_leading_space() |> take_line([]) do
+    case rest |> ignore_leading(" ") |> take_line([]) do
       nil ->
         nil
 
@@ -91,6 +88,6 @@ defmodule ServerSentEvents.Parser do
     take_line(rest, [iodata | [<<char::utf8>>]])
   end
 
-  defp ignore_single_leading_space(<<" ", rest::binary>>), do: rest
-  defp ignore_single_leading_space(rest), do: rest
+  defp ignore_leading(<<prefix::utf8, rest::binary>>, <<prefix::utf8>>), do: rest
+  defp ignore_leading(rest, _prefix), do: rest
 end
