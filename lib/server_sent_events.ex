@@ -19,10 +19,7 @@ defmodule ServerSentEvents do
       {[], "event: event\\ndata: {\\"complete\\":"}
 
       iex> ServerSentEvents.parse("event: event\\ndata: {\\"complete\\":true}\\n\\n")
-      {[%{"event" => "event", "data" => "{\\"complete\\":true}\\n"}], ""}
-
-      iex> ServerSentEvents.parse("data: {\\"complete\\":true}\\n\\ndata: {\\"complete\\":")
-      {[%{"event" => "", "data" => "{\\"complete\\":true}\\n"}], "data: {\\"complete\\":"}
+      {[%{"event" => "event", "data" => "{\\"complete\\":true}"}], ""}
 
   """
   def parse(chunk) when is_binary(chunk) do

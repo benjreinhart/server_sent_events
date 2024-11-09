@@ -26,7 +26,7 @@ IO.inspect(events)   # [%{"event" => "event", "data" => "{\"key\":\"value\"}\n"}
 IO.inspect(rest)     # ""
 ```
 
-This can be useful for environments where events may not reliably arrive in one piece.
+This can be useful for streaming environments where a single event may not reliably arrive in one chunk.
 
 ## Installation
 

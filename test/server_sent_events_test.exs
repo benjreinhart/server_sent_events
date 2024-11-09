@@ -5,13 +5,13 @@ defmodule ServerSentEventsTest do
   test "parse basic server sent events" do
     data = """
     event: starting
-    data: {"status": "starting", "progress": 0}
+    data: {"status":"starting","progress":0}
 
     event: updating
-    data: {"status": "processing", "progress": 45}
+    data: {"status":"processing","progress":45}
 
     event: updating
-    data: {"status": "still_processing", "progress": 98}
+    data: {"status":"still_processing","progress":98}
 
     event: finishing
     data: [DONE]
@@ -25,19 +25,19 @@ defmodule ServerSentEventsTest do
     assert events == [
              %{
                "event" => "starting",
-               "data" => "{\"status\": \"starting\", \"progress\": 0}\n"
+               "data" => "{\"status\":\"starting\",\"progress\":0}"
              },
              %{
                "event" => "updating",
-               "data" => "{\"status\": \"processing\", \"progress\": 45}\n"
+               "data" => "{\"status\":\"processing\",\"progress\":45}"
              },
              %{
                "event" => "updating",
-               "data" => "{\"status\": \"still_processing\", \"progress\": 98}\n"
+               "data" => "{\"status\":\"still_processing\",\"progress\":98}"
              },
              %{
                "event" => "finishing",
-               "data" => "[DONE]\n"
+               "data" => "[DONE]"
              }
            ]
   end
@@ -63,7 +63,7 @@ defmodule ServerSentEventsTest do
       )
 
     assert rest == ""
-    assert events == [%{"event" => "name", "data" => "data\n"}]
+    assert events == [%{"event" => "name", "data" => "data"}]
   end
 
   test "parse incomplete" do
@@ -80,25 +80,50 @@ defmodule ServerSentEventsTest do
     {events, rest} = ServerSentEvents.parse("event: event_name\ndata: foo bar\n\n")
 
     assert rest == ""
-    assert events == [%{"data" => "foo bar\n", "event" => "event_name"}]
+    assert events == [%{"event" => "event_name", "data" => "foo bar"}]
   end
 
   test "parse data that spans multiple lines" do
     {events, rest} = ServerSentEvents.parse("event: multi\ndata: foo\ndata: bar\ndata: baz\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "multi", "data" => "foo\nbar\nbaz\n"}]
+    assert events == [%{"event" => "multi", "data" => "foo\nbar\nbaz"}]
   end
 
   test "parse recognizes different line separators" do
     {events, rest} = ServerSentEvents.parse("event: event_name\r\ndata: data\r\n\r\n")
 
     assert rest == ""
-    assert events == [%{"data" => "data\n", "event" => "event_name"}]
+    assert events == [%{"event" => "event_name", "data" => "data"}]
 
     {events, rest} = ServerSentEvents.parse("event: event_name\rdata: data\r\r")
 
     assert rest == ""
-    assert events == [%{"data" => "data\n", "event" => "event_name"}]
+    assert events == [%{"event" => "event_name", "data" => "data"}]
+  end
+
+  test "handles multibyte characters" do
+    {events, rest} = ServerSentEvents.parse("event: €豆腐\ndata: 我現在都看實況不玩遊戲\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "€豆腐", "data" => "我現在都看實況不玩遊戲"}]
+
+    {events, rest} = ServerSentEvents.parse("event: 👋\ndata: Hello 🔥\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "👋", "data" => "Hello 🔥"}]
+  end
+
+  test "handles split multibyte characters" do
+    # The '🚀' emoji is 4 bytes. Here we split the string in the middle of the emoji
+    # to test that the parser can handle incomplete chunks where the end of one chunk
+    # falls in the middle of a multibyte character.
+    <<first_chunk::bytes-size(8), second_chunk::bytes-size(4)>> = "data: 🚀\n\n"
+
+    {[], ^first_chunk} = ServerSentEvents.parse(first_chunk)
+    {events, rest} = ServerSentEvents.parse(first_chunk <> second_chunk)
+
+    assert rest == ""
+    assert events == [%{"data" => "🚀"}]
   end
 end
