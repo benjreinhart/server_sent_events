@@ -42,6 +42,13 @@ defmodule ServerSentEventsTest do
            ]
   end
 
+  test "ignores BOM" do
+    {events, rest} = ServerSentEvents.parse(<<0xEF, 0xBB, 0xBF>>)
+
+    assert rest == ""
+    assert events == []
+  end
+
   test "parse with empty string" do
     {events, rest} = ServerSentEvents.parse("")
 
@@ -49,15 +56,15 @@ defmodule ServerSentEventsTest do
     assert events == []
   end
 
-  # test "parser ignores comments" do
-  #   {events, rest} =
-  #     ServerSentEvents.parse(
-  #       ": this is a comment\n\nevent: name\ndata: data\n\n: this is a comment\n\n"
-  #     )
+  test "parser ignores comments" do
+    {events, rest} =
+      ServerSentEvents.parse(
+        ": this is a comment\n\nevent: name\ndata: data\n\n: this is a comment\n\n"
+      )
 
-  #   assert rest == ""
-  #   assert events == [%{"event" => "name", "data" => "data\n"}]
-  # end
+    assert rest == ""
+    assert events == [%{"event" => "name", "data" => "data\n"}]
+  end
 
   test "parse incomplete" do
     {events, rest} = ServerSentEvents.parse("event: event_name\n")

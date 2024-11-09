@@ -4,15 +4,26 @@ defmodule ServerSentEvents.Parser do
   https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
   """
   def parse(chunk, events) do
-    case parse_event(chunk, %{"event" => [], "data" => []}) do
+    case parse_event(chunk, nil) do
       nil ->
         {Enum.reverse(events), chunk}
 
-      {event, ""} ->
-        {Enum.reverse([process_event(event) | events]), ""}
+      {nil, rest} ->
+        parse(rest, events)
 
       {event, rest} ->
         parse(rest, [process_event(event) | events])
+    end
+  end
+
+  defp parse_event(<<"\n", rest::binary>>, event) do
+    {event, rest}
+  end
+
+  defp parse_event(<<"\r", rest::binary>>, event) do
+    case rest do
+      <<"\n", rest::binary>> -> {event, rest}
+      _ -> {event, rest}
     end
   end
 
@@ -22,7 +33,12 @@ defmodule ServerSentEvents.Parser do
         nil
 
       {line, rest} ->
-        parse_event(rest, Map.update!(event, "data", &[&1, line | ["\n"]]))
+        event =
+          event
+          |> build_event_when_nil()
+          |> Map.update!("data", &[&1 | [line, "\n"]])
+
+        parse_event(rest, event)
     end
   end
 
@@ -32,29 +48,39 @@ defmodule ServerSentEvents.Parser do
         nil
 
       {line, rest} ->
-        parse_event(rest, Map.put(event, "event", line))
+        event =
+          event
+          |> build_event_when_nil()
+          |> Map.put("event", line)
+
+        parse_event(rest, event)
     end
   end
 
-  defp parse_event(<<"\n", rest::binary>>, event) do
-    {event, rest}
-  end
-
-  defp parse_event(<<"\r\n", rest::binary>>, event) do
-    {event, rest}
-  end
-
-  defp parse_event(<<"\r", rest::binary>>, event) do
-    {event, rest}
-  end
-
-  defp parse_event(<<>>, _event) do
+  defp parse_event("", _event) do
     nil
+  end
+
+  defp parse_event(<<":", rest::binary>>, event) do
+    case take_line(rest, []) do
+      nil ->
+        nil
+
+      {_line, rest} ->
+        parse_event(rest, event)
+    end
+  end
+
+  defp parse_event(<<"\uFEFF", rest::binary>>, event) do
+    {event, rest}
   end
 
   defp process_event(%{"event" => event, "data" => data}) do
     %{"event" => IO.iodata_to_binary(event), "data" => IO.iodata_to_binary(data)}
   end
+
+  defp build_event_when_nil(nil), do: %{"event" => "", "data" => ""}
+  defp build_event_when_nil(e), do: e
 
   defp take_line(<<>>, _iodata), do: nil
   defp take_line(<<"\n", rest::binary>>, iodata), do: {iodata, rest}
