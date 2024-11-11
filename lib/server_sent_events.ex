@@ -82,10 +82,6 @@ defmodule ServerSentEvents do
       {[?y, ?r, ?t, ?e, ?r], value, rest} ->
         parse_event(rest, Map.put(event, "retry", value))
 
-      {[], _value, rest} ->
-        # If a line starts with a colon, it is a comment and comments are ignored.
-        parse_event(rest, event)
-
       {_name, _value, rest} ->
         parse_event(rest, event)
     end
