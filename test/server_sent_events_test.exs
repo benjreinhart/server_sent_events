@@ -165,4 +165,18 @@ defmodule ServerSentEventsTest do
     assert rest == ""
     assert events == [%{"data" => "🚀"}]
   end
+
+  test "parses retry event" do
+    {events, rest} = ServerSentEvents.parse("retry: 10000\n\n")
+
+    assert rest == ""
+    assert events == [%{"retry" => 10000}]
+  end
+
+  test "Ignores retry when value is not ascii digits" do
+    {events, rest} = ServerSentEvents.parse("retry: abc\n\n")
+
+    assert rest == ""
+    assert events == []
+  end
 end

@@ -13,7 +13,13 @@ defmodule ServerSentEvents.Parser do
         parse(rest, events)
 
       {event, rest} ->
-        parse(rest, [process_event(event) | events])
+        case process_event(event) do
+          event when event == %{} ->
+            parse(rest, events)
+
+          event ->
+            parse(rest, [event | events])
+        end
     end
   end
 
@@ -58,6 +64,9 @@ defmodule ServerSentEvents.Parser do
       {[?t, ?n, ?e, ?v, ?e], value, rest} ->
         parse_event(rest, update_event(event, "event", fn _ -> value end))
 
+      {[?y, ?r, ?t, ?e, ?r], value, rest} ->
+        parse_event(rest, update_event(event, "retry", fn _ -> value end))
+
       {_name, _value, rest} ->
         parse_event(rest, event)
     end
@@ -98,9 +107,34 @@ defmodule ServerSentEvents.Parser do
 
   defp process_event(event) when not is_nil(event) do
     event
-    |> Enum.map(fn {k, v} -> {k, IO.iodata_to_binary(v)} end)
-    |> Map.new()
+    |> process_field_event()
+    |> process_field_data()
+    |> process_field_retry()
   end
+
+  defp process_field_event(%{"event" => field_event} = event) do
+    Map.put(event, "event", IO.iodata_to_binary(field_event))
+  end
+
+  defp process_field_event(event), do: event
+
+  defp process_field_data(%{"data" => data} = event) do
+    Map.put(event, "data", IO.iodata_to_binary(data))
+  end
+
+  defp process_field_data(event), do: event
+
+  defp process_field_retry(%{"retry" => retry} = event) do
+    case retry |> IO.iodata_to_binary() |> Integer.parse() do
+      {value, _} ->
+        Map.put(event, "retry", value)
+
+      :error ->
+        Map.delete(event, "retry")
+    end
+  end
+
+  defp process_field_retry(event), do: event
 
   defp update_event(event, key, updater_fun) do
     (event || %{})
