@@ -24,3 +24,5 @@ server_sent_events-*.tar
 
 # Temporary files, for example, from tests.
 /tmp/
+
+*.gitignored.*
