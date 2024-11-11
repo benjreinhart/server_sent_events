@@ -6,6 +6,8 @@ defmodule ServerSentEvents do
   - https://html.spec.whatwg.org/multipage/server-sent-events.html
   """
 
+  @compile {:inline, ignore_leading: 2}
+
   @doc ~s"""
   Parses a chunk of data into a list of Server Sent Event messages.
 
@@ -56,7 +58,11 @@ defmodule ServerSentEvents do
     {event, ignore_leading(rest, "\n")}
   end
 
-  defp parse_event(chunk, event) when chunk != <<>> do
+  defp parse_event(<<>>, _event) do
+    nil
+  end
+
+  defp parse_event(chunk, event) do
     case parse_field(chunk, []) do
       nil ->
         nil
@@ -85,10 +91,6 @@ defmodule ServerSentEvents do
       {_name, _value, rest} ->
         parse_event(rest, event)
     end
-  end
-
-  defp parse_event(<<>>, _event) do
-    nil
   end
 
   # 'field' here is a reference to the 'field' grammar definition in the spec.
