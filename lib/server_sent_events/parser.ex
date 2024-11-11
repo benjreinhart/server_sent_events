@@ -5,12 +5,9 @@ defmodule ServerSentEvents.Parser do
   """
 
   def parse(chunk, events) do
-    case parse_event(chunk, nil) do
+    case parse_event(chunk, %{}) do
       nil ->
         {Enum.reverse(events), chunk}
-
-      {nil, rest} ->
-        parse(rest, events)
 
       {event, rest} ->
         case process_event(event) do
@@ -53,19 +50,22 @@ defmodule ServerSentEvents.Parser do
         nil
 
       {[?a, ?t, ?a, ?d], value, rest} ->
-        parse_event(
-          rest,
-          update_event(event, "data", fn
-            nil -> value
-            data -> [data | ["\n", value]]
-          end)
-        )
+        data =
+          case event do
+            %{"data" => data} ->
+              [data | ["\n", value]]
+
+            _ ->
+              value
+          end
+
+        parse_event(rest, Map.put(event, "data", data))
 
       {[?t, ?n, ?e, ?v, ?e], value, rest} ->
-        parse_event(rest, update_event(event, "event", fn _ -> value end))
+        parse_event(rest, Map.put(event, "event", value))
 
       {[?y, ?r, ?t, ?e, ?r], value, rest} ->
-        parse_event(rest, update_event(event, "retry", fn _ -> value end))
+        parse_event(rest, Map.put(event, "retry", value))
 
       {_name, _value, rest} ->
         parse_event(rest, event)
@@ -104,7 +104,7 @@ defmodule ServerSentEvents.Parser do
     nil
   end
 
-  defp process_event(event) when not is_nil(event) do
+  defp process_event(event) do
     event
     |> process_field_event()
     |> process_field_data()
@@ -134,12 +134,6 @@ defmodule ServerSentEvents.Parser do
   end
 
   defp process_field_retry(event), do: event
-
-  defp update_event(event, key, updater_fun) do
-    (event || %{})
-    |> Map.put_new(key, nil)
-    |> Map.update!(key, updater_fun)
-  end
 
   defp take_line(<<"\n", rest::binary>>, iodata), do: {iodata, rest}
   defp take_line(<<"\r\n", rest::binary>>, iodata), do: {iodata, rest}
