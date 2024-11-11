@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml/badge.svg)](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml)
 [![License](https://img.shields.io/hexpm/l/server_sent_events.svg)](https://github.com/benjreinhart/server_sent_events/blob/main/LICENSE.md)
-[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hex.pm/benjreinhart/server_sent_events)
+[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hex.pm/packages/server_sent_events)
 
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
