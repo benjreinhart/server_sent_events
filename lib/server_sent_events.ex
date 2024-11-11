@@ -14,13 +14,15 @@ defmodule ServerSentEvents do
   Returns a tuple containing the list of parsed events and the remaining data
   from the chunk if it contained an incomplete event.
 
+  There are only four possible keys in the event map: `:id`, `:event`, `:data`, `:retry`.
+
   ## Examples
 
       iex> ServerSentEvents.parse("event: event\\ndata: {\\"complete\\":")
       {[], "event: event\\ndata: {\\"complete\\":"}
 
       iex> ServerSentEvents.parse("event: event\\ndata: {\\"complete\\":true}\\n\\n")
-      {[%{"event" => "event", "data" => "{\\"complete\\":true}"}], ""}
+      {[%{event: "event", data: "{\\"complete\\":true}"}], ""}
 
   """
   def parse(chunk) when is_binary(chunk) do
@@ -70,23 +72,23 @@ defmodule ServerSentEvents do
       {[?a, ?t, ?a, ?d], value, rest} ->
         data =
           case event do
-            %{"data" => data} ->
+            %{data: data} ->
               [data | ["\n", value]]
 
             _ ->
               value
           end
 
-        parse_event(rest, Map.put(event, "data", data))
+        parse_event(rest, Map.put(event, :data, data))
 
       {[?t, ?n, ?e, ?v, ?e], value, rest} ->
-        parse_event(rest, Map.put(event, "event", value))
+        parse_event(rest, Map.put(event, :event, value))
 
       {[?d, ?i], value, rest} ->
-        parse_event(rest, Map.put(event, "id", value))
+        parse_event(rest, Map.put(event, :id, value))
 
       {[?y, ?r, ?t, ?e, ?r], value, rest} ->
-        parse_event(rest, Map.put(event, "retry", value))
+        parse_event(rest, Map.put(event, :retry, value))
 
       {_name, _value, rest} ->
         parse_event(rest, event)
@@ -121,29 +123,29 @@ defmodule ServerSentEvents do
     nil
   end
 
-  defp process_field({"data", data}, event) do
-    Map.put(event, "data", IO.iodata_to_binary(data))
+  defp process_field({:data, data}, event) do
+    Map.put(event, :data, IO.iodata_to_binary(data))
   end
 
-  defp process_field({"event", name}, event) do
-    Map.put(event, "event", IO.iodata_to_binary(name))
+  defp process_field({:event, name}, event) do
+    Map.put(event, :event, IO.iodata_to_binary(name))
   end
 
-  defp process_field({"id", id}, event) do
+  defp process_field({:id, id}, event) do
     case id do
       [[], <<0>>] ->
         # Ignore U+0000 NULL character
         event
 
       id ->
-        Map.put(event, "id", IO.iodata_to_binary(id))
+        Map.put(event, :id, IO.iodata_to_binary(id))
     end
   end
 
-  defp process_field({"retry", retry}, event) do
+  defp process_field({:retry, retry}, event) do
     case retry |> IO.iodata_to_binary() |> Integer.parse() do
       {value, _} ->
-        Map.put(event, "retry", value)
+        Map.put(event, :retry, value)
 
       :error ->
         event

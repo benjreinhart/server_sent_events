@@ -8,7 +8,7 @@ This module fully conforms to the official [Server Sent Events specification](ht
 
 ```elixir
 {events, rest} = ServerSentEvents.parse("event: event\ndata: {\"complete\":true}\n\n")
-IO.inspect(events)   # [%{"event" => "event", "data" => "{\"complete\":true}\n"}]
+IO.inspect(events)   # [%{event: "event", data: "{\"complete\":true}\n"}]
 IO.inspect(rest)     # ""
 ```
 
@@ -20,11 +20,11 @@ IO.inspect(events)   # []
 IO.inspect(buffer)   # "event: event\ndata: {\"complete\":"
 
 {events, buffer} = ServerSentEvents.parse(buffer <> "true}\n\nevent: event\ndata: {")
-IO.inspect(events)   # [%{"event" => "event", "data" => "{\"complete\":true}\n"}]
+IO.inspect(events)   # [%{event: "event", data: "{\"complete\":true}\n"}]
 IO.inspect(buffer)   # "event: event\ndata: {"
 
 {events, rest} = ServerSentEvents.parse(buffer <> "\"key\":\"value\"}\n\n")
-IO.inspect(events)   # [%{"event" => "event", "data" => "{\"key\":\"value\"}\n"}]
+IO.inspect(events)   # [%{event: "event", data: "{\"key\":\"value\"}\n"}]
 IO.inspect(rest)     # ""
 ```
 
@@ -66,17 +66,17 @@ The first chunk from Anthropic tends to contain a couple of messages that look s
 IO.inspect(events)
 # [
 #   %{
-#     "data" => "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_01LAFhYgKvtBB5ac5n41oyDn\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-5-sonnet-20241022\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":12,\"output_tokens\":2}}        }",
-#     "event" => "message_start"
+#     data: "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_01LAFhYgKvtBB5ac5n41oyDn\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-5-sonnet-20241022\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":12,\"output_tokens\":2}}        }",
+#     event: "message_start"
 #   },
 #   %{
-#     "data" => "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}         }",
-#     "event" => "content_block_start"
+#     data: "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}         }",
+#     event: "content_block_start"
 #   },
-#   %{"data" => "{\"type\": \"ping\"}", "event" => "ping"},
+#   %{data: "{\"type\": \"ping\"}", event: "ping"},
 #   %{
-#     "data" => "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here's\"}          }",
-#     "event" => "content_block_delta"
+#     data: "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here's\"}          }",
+#     event: "content_block_delta"
 #   }
 # ]
 ```

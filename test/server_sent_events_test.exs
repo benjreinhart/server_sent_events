@@ -36,27 +36,27 @@ defmodule ServerSentEventsTest do
 
     assert events == [
              %{
-               "id" => "1",
-               "event" => "starting",
-               "data" => "{\"status\":\"starting\",\"progress\":0}"
+               id: "1",
+               event: "starting",
+               data: "{\"status\":\"starting\",\"progress\":0}"
              },
              %{
-               "id" => "2",
-               "event" => "updating",
-               "data" => "{\"status\":\"processing\",\"progress\":45}"
+               id: "2",
+               event: "updating",
+               data: "{\"status\":\"processing\",\"progress\":45}"
              },
              %{
-               "retry" => 15000
+               retry: 15000
              },
              %{
-               "id" => "3",
-               "event" => "updating",
-               "data" => "{\n  \"status\": \"still_processing\",\n  \"progress\": 98\n}"
+               id: "3",
+               event: "updating",
+               data: "{\n  \"status\": \"still_processing\",\n  \"progress\": 98\n}"
              },
              %{
-               "id" => "4",
-               "event" => "finishing",
-               "data" => "[DONE]"
+               id: "4",
+               event: "finishing",
+               data: "[DONE]"
              }
            ]
   end
@@ -86,26 +86,26 @@ defmodule ServerSentEventsTest do
     {events, rest} = ServerSentEvents.parse("event:event_type\ndata:data\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "event_type", "data" => "data"}]
+    assert events == [%{event: "event_type", data: "data"}]
   end
 
   test "strips exactly on leading space after colon but no more" do
     {events, rest} = ServerSentEvents.parse("event:  event_type\ndata:  data\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => " event_type", "data" => " data"}]
+    assert events == [%{event: " event_type", data: " data"}]
   end
 
   test "colon is optional" do
     {events, rest} = ServerSentEvents.parse("event\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => ""}]
+    assert events == [%{event: ""}]
 
     {events, rest} = ServerSentEvents.parse("data\n\n")
 
     assert rest == ""
-    assert events == [%{"data" => ""}]
+    assert events == [%{data: ""}]
   end
 
   test "parser ignores comments" do
@@ -115,7 +115,7 @@ defmodule ServerSentEventsTest do
       )
 
     assert rest == ""
-    assert events == [%{"event" => "name", "data" => "data"}]
+    assert events == [%{event: "name", data: "data"}]
   end
 
   test "parse incomplete" do
@@ -132,14 +132,14 @@ defmodule ServerSentEventsTest do
     {events, rest} = ServerSentEvents.parse("event: event_name\ndata: foo bar\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "event_name", "data" => "foo bar"}]
+    assert events == [%{event: "event_name", data: "foo bar"}]
   end
 
   test "parse data that spans multiple lines" do
     {events, rest} = ServerSentEvents.parse("event: multi\ndata: foo\ndata: bar\ndata: baz\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "multi", "data" => "foo\nbar\nbaz"}]
+    assert events == [%{event: "multi", data: "foo\nbar\nbaz"}]
   end
 
   test "uses last event as the event type when multiple are specified" do
@@ -147,7 +147,7 @@ defmodule ServerSentEventsTest do
       ServerSentEvents.parse("event: event1\nevent: event2\nevent: event3\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "event3", "data" => "data"}]
+    assert events == [%{event: "event3", data: "data"}]
   end
 
   test "empty event resets non-empty event when it follows non-empty event" do
@@ -155,54 +155,54 @@ defmodule ServerSentEventsTest do
       ServerSentEvents.parse("event: event1\nevent\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "", "data" => "data"}]
+    assert events == [%{event: "", data: "data"}]
 
     {events, rest} =
       ServerSentEvents.parse("event: event1\nevent:\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "", "data" => "data"}]
+    assert events == [%{event: "", data: "data"}]
   end
 
   test "parses empty data" do
     {events, rest} = ServerSentEvents.parse("data\n\ndata\ndata\n\ndata:\n")
 
     assert rest == "data:\n"
-    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+    assert events == [%{data: ""}, %{data: "\n"}]
 
     {events, rest} = ServerSentEvents.parse("data\r\n\r\ndata\r\ndata\r\n\r\ndata:\r\n")
 
     assert rest == "data:\r\n"
-    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+    assert events == [%{data: ""}, %{data: "\n"}]
 
     {events, rest} = ServerSentEvents.parse("data\r\rdata\rdata\r\rdata:\r")
 
     assert rest == "data:\r"
-    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+    assert events == [%{data: ""}, %{data: "\n"}]
   end
 
   test "parse recognizes different line separators" do
     {events, rest} = ServerSentEvents.parse("event: event_name\r\ndata: data\r\n\r\n")
 
     assert rest == ""
-    assert events == [%{"event" => "event_name", "data" => "data"}]
+    assert events == [%{event: "event_name", data: "data"}]
 
     {events, rest} = ServerSentEvents.parse("event: event_name\rdata: data\r\r")
 
     assert rest == ""
-    assert events == [%{"event" => "event_name", "data" => "data"}]
+    assert events == [%{event: "event_name", data: "data"}]
   end
 
   test "handles multibyte characters" do
     {events, rest} = ServerSentEvents.parse("event: €豆腐\ndata: 我現在都看實況不玩遊戲\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "€豆腐", "data" => "我現在都看實況不玩遊戲"}]
+    assert events == [%{event: "€豆腐", data: "我現在都看實況不玩遊戲"}]
 
     {events, rest} = ServerSentEvents.parse("event: 👋\ndata: Hello 🔥\n\n")
 
     assert rest == ""
-    assert events == [%{"event" => "👋", "data" => "Hello 🔥"}]
+    assert events == [%{event: "👋", data: "Hello 🔥"}]
   end
 
   test "handles split multibyte characters" do
@@ -215,14 +215,14 @@ defmodule ServerSentEventsTest do
     {events, rest} = ServerSentEvents.parse(first_chunk <> second_chunk)
 
     assert rest == ""
-    assert events == [%{"data" => "🚀"}]
+    assert events == [%{data: "🚀"}]
   end
 
   test "parses retry event" do
     {events, rest} = ServerSentEvents.parse("retry: 10000\n\n")
 
     assert rest == ""
-    assert events == [%{"retry" => 10000}]
+    assert events == [%{retry: 10000}]
   end
 
   test "ignores retry when value is not ascii digits" do
@@ -256,19 +256,19 @@ defmodule ServerSentEventsTest do
     {events, rest} = ServerSentEvents.parse("unknown\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"data" => "data"}]
+    assert events == [%{data: "data"}]
   end
 
   test "consecutive ids override one another" do
     {events, rest} = ServerSentEvents.parse("id: 1\nid:2\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"id" => "2", "data" => "data"}]
+    assert events == [%{id: "2", data: "data"}]
 
     {events, rest} = ServerSentEvents.parse("id: 1\nid\ndata: data\n\n")
 
     assert rest == ""
-    assert events == [%{"id" => "", "data" => "data"}]
+    assert events == [%{id: "", data: "data"}]
   end
 
   test "ignores null ids" do
