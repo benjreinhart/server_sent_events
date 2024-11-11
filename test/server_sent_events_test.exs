@@ -4,15 +4,21 @@ defmodule ServerSentEventsTest do
 
   test "parse basic server sent events" do
     data = """
+    id: 1
     event: starting
     data: {"status":"starting","progress":0}
 
+    id: 2
     event: updating
     data: {"status":"processing","progress":45}
 
+    retry: 15000
+
+    id: 3
     event: updating
     data: {"status":"still_processing","progress":98}
 
+    id: 4
     event: finishing
     data: [DONE]
 
@@ -24,18 +30,25 @@ defmodule ServerSentEventsTest do
 
     assert events == [
              %{
+               "id" => "1",
                "event" => "starting",
                "data" => "{\"status\":\"starting\",\"progress\":0}"
              },
              %{
+               "id" => "2",
                "event" => "updating",
                "data" => "{\"status\":\"processing\",\"progress\":45}"
              },
              %{
+               "retry" => 15000
+             },
+             %{
+               "id" => "3",
                "event" => "updating",
                "data" => "{\"status\":\"still_processing\",\"progress\":98}"
              },
              %{
+               "id" => "4",
                "event" => "finishing",
                "data" => "[DONE]"
              }
@@ -238,5 +251,24 @@ defmodule ServerSentEventsTest do
 
     assert rest == ""
     assert events == [%{"data" => "data"}]
+  end
+
+  test "consecutive ids override one another" do
+    {events, rest} = ServerSentEvents.parse("id: 1\nid:2\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"id" => "2", "data" => "data"}]
+
+    {events, rest} = ServerSentEvents.parse("id: 1\nid\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"id" => "", "data" => "data"}]
+  end
+
+  test "ignores null ids" do
+    {events, rest} = ServerSentEvents.parse("id: \u0000\n\n")
+
+    assert rest == ""
+    assert events == []
   end
 end

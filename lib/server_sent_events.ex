@@ -75,6 +75,9 @@ defmodule ServerSentEvents do
       {[?t, ?n, ?e, ?v, ?e], value, rest} ->
         parse_event(rest, Map.put(event, "event", value))
 
+      {[?d, ?i], value, rest} ->
+        parse_event(rest, Map.put(event, "id", value))
+
       {[?y, ?r, ?t, ?e, ?r], value, rest} ->
         parse_event(rest, Map.put(event, "retry", value))
 
@@ -127,13 +130,24 @@ defmodule ServerSentEvents do
     Map.put(event, "event", IO.iodata_to_binary(name))
   end
 
+  defp process_field({"id", id}, event) do
+    case id do
+      [[], <<0>>] ->
+        # Ignore U+0000 NULL character
+        event
+
+      id ->
+        Map.put(event, "id", IO.iodata_to_binary(id))
+    end
+  end
+
   defp process_field({"retry", retry}, event) do
     case retry |> IO.iodata_to_binary() |> Integer.parse() do
       {value, _} ->
         Map.put(event, "retry", value)
 
       :error ->
-        Map.delete(event, "retry")
+        event
     end
   end
 
