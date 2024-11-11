@@ -1,6 +1,8 @@
 # ServerSentEvents
 
-Efficient and fully spec conformant Server Sent Event parser for Elixir.
+Lightweight, ultra-fast Server Sent Event parser for Elixir.
+
+This module fully conforms to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events_test.exs).
 
 ## Usage
 

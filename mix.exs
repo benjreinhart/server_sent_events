@@ -3,7 +3,7 @@ defmodule ServerSentEvents.MixProject do
 
   @github_repo_url "https://github.com/benjreinhart/server_sent_events"
 
-  @description "Efficient and fully spec conformant Server Sent Event parser"
+  @description "Lightweight, ultra-fast Server Sent Event parser"
 
   def project do
     [

@@ -1,13 +1,13 @@
 defmodule ServerSentEvents do
   @moduledoc """
-  This module is an efficient and fully spec conformant Server Sent Event parser.
+  This module implements a parser for Server Sent Events. See the official
+  specification for details on parsing and interpreting the event stream.
 
-  - https://en.wikipedia.org/wiki/Server-sent_events
   - https://html.spec.whatwg.org/multipage/server-sent-events.html
   """
 
   @doc ~s"""
-  Parses a chunk of data into a list of SSE messages.
+  Parses a chunk of data into a list of Server Sent Event messages.
 
   Returns a tuple containing the list of parsed events and the remaining data
   from the chunk if it contained an incomplete event.
