@@ -10,7 +10,7 @@ defmodule ServerSentEvents.Parser do
         {Enum.reverse(events), chunk}
 
       {event, rest} ->
-        case process_event(event) do
+        case Enum.reduce(event, %{}, &process_field/2) do
           event when event == %{} ->
             parse(rest, events)
 
@@ -104,26 +104,15 @@ defmodule ServerSentEvents.Parser do
     nil
   end
 
-  defp process_event(event) do
-    event
-    |> process_field_event()
-    |> process_field_data()
-    |> process_field_retry()
-  end
-
-  defp process_field_event(%{"event" => field_event} = event) do
-    Map.put(event, "event", IO.iodata_to_binary(field_event))
-  end
-
-  defp process_field_event(event), do: event
-
-  defp process_field_data(%{"data" => data} = event) do
+  defp process_field({"data", data}, event) do
     Map.put(event, "data", IO.iodata_to_binary(data))
   end
 
-  defp process_field_data(event), do: event
+  defp process_field({"event", name}, event) do
+    Map.put(event, "event", IO.iodata_to_binary(name))
+  end
 
-  defp process_field_retry(%{"retry" => retry} = event) do
+  defp process_field({"retry", retry}, event) do
     case retry |> IO.iodata_to_binary() |> Integer.parse() do
       {value, _} ->
         Map.put(event, "retry", value)
@@ -132,8 +121,6 @@ defmodule ServerSentEvents.Parser do
         Map.delete(event, "retry")
     end
   end
-
-  defp process_field_retry(event), do: event
 
   defp take_line(<<"\n", rest::binary>>, iodata), do: {iodata, rest}
   defp take_line(<<"\r\n", rest::binary>>, iodata), do: {iodata, rest}
