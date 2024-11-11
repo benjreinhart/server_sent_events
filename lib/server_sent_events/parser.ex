@@ -92,11 +92,10 @@ defmodule ServerSentEvents.Parser do
     end
   end
 
-  # We build the 'name' part of the 'field' as a charlist in reverse order.
-  # Since we only have a small set of know possible field names, we can match
-  # on the reversed charlist to determine the field name. For example, to know
-  # if the field name is "data", we can match [?a, ?t, ?a, ?d]. This keeps the
-  # code simple and efficient.
+  # We build the 'name' part of the 'field' as a charlist in reverse order. Since we
+  # only have a small set of known field names, we can match on the reversed charlist
+  # to determine the field name. For example, to know if the field name is "data", we
+  # can match [?a, ?t, ?a, ?d]. This keeps the code simple and efficient.
   defp parse_field(<<char::utf8, rest::binary>>, name) do
     parse_field(rest, [char | name])
   end

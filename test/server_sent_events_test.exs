@@ -56,6 +56,39 @@ defmodule ServerSentEventsTest do
     assert events == []
   end
 
+  test "parser ignores empty events" do
+    {events, rest} = ServerSentEvents.parse("\n\n\r\n\r\n\n\n")
+
+    assert rest == ""
+    assert events == []
+  end
+
+  test "space after colon is optional" do
+    {events, rest} = ServerSentEvents.parse("event:event_type\ndata:data\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "event_type", "data" => "data"}]
+  end
+
+  test "strips exactly on leading space after colon but no more" do
+    {events, rest} = ServerSentEvents.parse("event:  event_type\ndata:  data\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => " event_type", "data" => " data"}]
+  end
+
+  test "colon is optional" do
+    {events, rest} = ServerSentEvents.parse("event\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => ""}]
+
+    {events, rest} = ServerSentEvents.parse("data\n\n")
+
+    assert rest == ""
+    assert events == [%{"data" => ""}]
+  end
+
   test "parser ignores comments" do
     {events, rest} =
       ServerSentEvents.parse(
@@ -173,10 +206,37 @@ defmodule ServerSentEventsTest do
     assert events == [%{"retry" => 10000}]
   end
 
-  test "Ignores retry when value is not ascii digits" do
+  test "ignores retry when value is not ascii digits" do
     {events, rest} = ServerSentEvents.parse("retry: abc\n\n")
 
     assert rest == ""
     assert events == []
+  end
+
+  test "ignores non-recognized event fields" do
+    {events, rest} = ServerSentEvents.parse("unknown: value\n\n")
+
+    assert rest == ""
+    assert events == []
+
+    {events, rest} = ServerSentEvents.parse("unknown\n\n")
+
+    assert rest == ""
+    assert events == []
+
+    {events, rest} = ServerSentEvents.parse(" :\n\n")
+
+    assert rest == ""
+    assert events == []
+
+    {events, rest} = ServerSentEvents.parse(" \n\n")
+
+    assert rest == ""
+    assert events == []
+
+    {events, rest} = ServerSentEvents.parse("unknown\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"data" => "data"}]
   end
 end
