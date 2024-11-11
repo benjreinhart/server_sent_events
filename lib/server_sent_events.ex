@@ -1,8 +1,9 @@
 defmodule ServerSentEvents do
   @moduledoc """
-  This module implements a performant [Server Sent Event](https://en.wikipedia.org/wiki/Server-sent_events) parser.
+  This module is an efficient and fully spec conformant Server Sent Event parser.
 
-  The parser fully conforms to the [Server-Sent Events spec](https://html.spec.whatwg.org/multipage/server-sent-events.html).
+  - https://en.wikipedia.org/wiki/Server-sent_events
+  - https://html.spec.whatwg.org/multipage/server-sent-events.html
   """
 
   @doc ~s"""
