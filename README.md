@@ -1,5 +1,9 @@
 # ServerSentEvents
 
+[![CI](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml/badge.svg)](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml)
+[![License](https://img.shields.io/hexpm/l/server_sent_events.svg)](https://github.com/benjreinhart/server_sent_events/blob/main/LICENSE.md)
+[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hex.pm/benjreinhart/server_sent_events)
+
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
 This module fully conforms to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events_test.exs).
