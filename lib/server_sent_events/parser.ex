@@ -25,70 +25,9 @@ defmodule ServerSentEvents.Parser do
     {event, ignore_leading(rest, "\n")}
   end
 
-  defp parse_event(<<"data", rest::binary>>, event) do
-    case rest do
-      <<":", rest::binary>> ->
-        case rest |> ignore_leading(" ") |> take_line([]) do
-          nil ->
-            nil
-
-          {line, rest} ->
-            parse_event_with_data(rest, event, [line], ["\n", line])
-        end
-
-      <<"\n", rest::binary>> ->
-        parse_event_with_data(rest, event, [""], ["\n"])
-
-      <<"\r\n", rest::binary>> ->
-        parse_event_with_data(rest, event, [""], ["\n"])
-
-      <<"\r", rest::binary>> ->
-        parse_event_with_data(rest, event, [""], ["\n"])
-
-      rest ->
-        case ignore_line(rest) do
-          nil ->
-            nil
-
-          rest ->
-            parse_event(rest, event)
-        end
-    end
-  end
-
-  defp parse_event(<<"event", rest::binary>>, event) do
-    case rest do
-      <<":", rest::binary>> ->
-        case rest |> ignore_leading(" ") |> take_line([]) do
-          nil ->
-            nil
-
-          {line, rest} ->
-            parse_event(rest, update_event(event, "event", fn _ -> line end))
-        end
-
-      <<"\n", rest::binary>> ->
-        parse_event(rest, update_event(event, "event", fn _ -> "" end))
-
-      <<"\r\n", rest::binary>> ->
-        parse_event(rest, update_event(event, "event", fn _ -> "" end))
-
-      <<"\r", rest::binary>> ->
-        parse_event(rest, update_event(event, "event", fn _ -> "" end))
-
-      rest ->
-        case ignore_line(rest) do
-          nil ->
-            nil
-
-          rest ->
-            parse_event(rest, event)
-        end
-    end
-  end
-
-  defp parse_event(<<>>, _event) do
-    nil
+  # Byte-order mark (BOM) is ignored
+  defp parse_event(<<"\uFEFF", rest::binary>>, event) do
+    {event, rest}
   end
 
   # Comments are ignored
@@ -102,19 +41,59 @@ defmodule ServerSentEvents.Parser do
     end
   end
 
-  # Byte-order mark (BOM) is ignored
-  defp parse_event(<<"\uFEFF", rest::binary>>, event) do
-    {event, rest}
+  defp parse_event(chunk, event) when chunk != <<>> do
+    case parse_field(chunk, []) do
+      nil ->
+        nil
+
+      {[?a, ?t, ?a, ?d], value, rest} ->
+        parse_event(
+          rest,
+          update_event(event, "data", fn
+            nil -> value
+            data -> [data | ["\n", value]]
+          end)
+        )
+
+      {[?t, ?n, ?e, ?v, ?e], value, rest} ->
+        parse_event(rest, update_event(event, "event", fn _ -> value end))
+
+      {_name, _value, rest} ->
+        parse_event(rest, event)
+    end
   end
 
-  defp parse_event_with_data(rest, event, initial_data, additional_data) do
-    parse_event(
-      rest,
-      update_event(event, "data", fn
-        nil -> initial_data
-        data -> [data | additional_data]
-      end)
-    )
+  defp parse_event(<<>>, _event) do
+    nil
+  end
+
+  # 'field' here is a reference to the 'field' grammar definition in the spec.
+  # https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream
+  defp parse_field(<<"\n", rest::binary>>, name), do: {name, [], rest}
+  defp parse_field(<<"\r\n", rest::binary>>, name), do: {name, [], rest}
+  defp parse_field(<<"\r", rest::binary>>, name), do: {name, [], rest}
+
+  defp parse_field(<<":", rest::binary>>, name) do
+    case rest |> ignore_leading(" ") |> take_line([]) do
+      nil ->
+        nil
+
+      {value, rest} ->
+        {name, value, rest}
+    end
+  end
+
+  # We build the 'name' part of the 'field' as a charlist in reverse order.
+  # Since we only have a small set of know possible field names, we can match
+  # on the reversed charlist to determine the field name. For example, to know
+  # if the field name is "data", we can match [?a, ?t, ?a, ?d]. This keeps the
+  # code simple and efficient.
+  defp parse_field(<<char::utf8, rest::binary>>, name) do
+    parse_field(rest, [char | name])
+  end
+
+  defp parse_field(<<>>, _name) do
+    nil
   end
 
   defp process_event(event) when not is_nil(event) do
