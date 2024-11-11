@@ -10,13 +10,19 @@ defmodule ServerSentEventsTest do
 
     id: 2
     event: updating
-    data: {"status":"processing","progress":45}
+    data:{"status":"processing","progress":45}
 
     retry: 15000
 
     id: 3
     event: updating
-    data: {"status":"still_processing","progress":98}
+    data: {
+    data:   "status": "still_processing",
+    data:   "progress": 98
+    data: }
+
+    id: \u0000
+    invalid: value
 
     id: 4
     event: finishing
@@ -45,7 +51,7 @@ defmodule ServerSentEventsTest do
              %{
                "id" => "3",
                "event" => "updating",
-               "data" => "{\"status\":\"still_processing\",\"progress\":98}"
+               "data" => "{\n  \"status\": \"still_processing\",\n  \"progress\": 98\n}"
              },
              %{
                "id" => "4",
