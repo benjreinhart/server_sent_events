@@ -90,7 +90,7 @@ The package can be installed by adding `server_sent_events` to your list of depe
 ```elixir
 def deps do
   [
-    {:server_sent_events, "~> 0.1.0"}
+    {:server_sent_events, "~> 0.2.0"}
   ]
 end
 ```
