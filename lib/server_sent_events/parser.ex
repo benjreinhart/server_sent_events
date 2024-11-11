@@ -4,6 +4,13 @@ defmodule ServerSentEvents.Parser do
   https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
   """
 
+  # Byte order mark is only supposed to appear once at the start of the stream according
+  # to the spec. Thus, we only check for it one time for each parse invocation, though
+  # parse will be called multiple times for streams with more than one chunk.
+  def parse(<<"\uFEFF", rest::binary>>, events) do
+    parse(rest, events)
+  end
+
   def parse(chunk, events) do
     case parse_event(chunk, %{}) do
       nil ->
@@ -28,22 +35,6 @@ defmodule ServerSentEvents.Parser do
     {event, ignore_leading(rest, "\n")}
   end
 
-  # Byte-order mark (BOM) is ignored
-  defp parse_event(<<"\uFEFF", rest::binary>>, event) do
-    {event, rest}
-  end
-
-  # Comments are ignored
-  defp parse_event(<<":", rest::binary>>, event) do
-    case ignore_line(rest) do
-      nil ->
-        nil
-
-      rest ->
-        parse_event(rest, event)
-    end
-  end
-
   defp parse_event(chunk, event) when chunk != <<>> do
     case parse_field(chunk, []) do
       nil ->
@@ -66,6 +57,10 @@ defmodule ServerSentEvents.Parser do
 
       {[?y, ?r, ?t, ?e, ?r], value, rest} ->
         parse_event(rest, Map.put(event, "retry", value))
+
+      {[], _value, rest} ->
+        # If a line starts with a colon, it is a comment and comments are ignored.
+        parse_event(rest, event)
 
       {_name, _value, rest} ->
         parse_event(rest, event)
@@ -144,10 +139,4 @@ defmodule ServerSentEvents.Parser do
 
   defp ignore_leading(<<char::utf8, rest::binary>>, <<char::utf8>>), do: rest
   defp ignore_leading(rest, _char), do: rest
-
-  defp ignore_line(<<"\n", rest::binary>>), do: rest
-  defp ignore_line(<<"\r\n", rest::binary>>), do: rest
-  defp ignore_line(<<"\r", rest::binary>>), do: rest
-  defp ignore_line(<<_char::utf8, rest::binary>>), do: ignore_line(rest)
-  defp ignore_line(<<>>), do: nil
 end
