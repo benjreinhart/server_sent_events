@@ -90,6 +90,45 @@ defmodule ServerSentEventsTest do
     assert events == [%{"event" => "multi", "data" => "foo\nbar\nbaz"}]
   end
 
+  test "uses last event as the event type when multiple are specified" do
+    {events, rest} =
+      ServerSentEvents.parse("event: event1\nevent: event2\nevent: event3\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "event3", "data" => "data"}]
+  end
+
+  test "empty event resets non-empty event when it follows non-empty event" do
+    {events, rest} =
+      ServerSentEvents.parse("event: event1\nevent\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "", "data" => "data"}]
+
+    {events, rest} =
+      ServerSentEvents.parse("event: event1\nevent:\ndata: data\n\n")
+
+    assert rest == ""
+    assert events == [%{"event" => "", "data" => "data"}]
+  end
+
+  test "parses empty data" do
+    {events, rest} = ServerSentEvents.parse("data\n\ndata\ndata\n\ndata:\n")
+
+    assert rest == "data:\n"
+    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+
+    {events, rest} = ServerSentEvents.parse("data\r\n\r\ndata\r\ndata\r\n\r\ndata:\r\n")
+
+    assert rest == "data:\r\n"
+    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+
+    {events, rest} = ServerSentEvents.parse("data\r\rdata\rdata\r\rdata:\r")
+
+    assert rest == "data:\r"
+    assert events == [%{"data" => ""}, %{"data" => "\n"}]
+  end
+
   test "parse recognizes different line separators" do
     {events, rest} = ServerSentEvents.parse("event: event_name\r\ndata: data\r\n\r\n")
 

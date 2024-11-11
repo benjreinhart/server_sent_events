@@ -25,29 +25,65 @@ defmodule ServerSentEvents.Parser do
     {event, ignore_leading(rest, "\n")}
   end
 
-  defp parse_event(<<"data:", rest::binary>>, event) do
-    case rest |> ignore_leading(" ") |> take_line([]) do
-      nil ->
-        nil
+  defp parse_event(<<"data", rest::binary>>, event) do
+    case rest do
+      <<":", rest::binary>> ->
+        case rest |> ignore_leading(" ") |> take_line([]) do
+          nil ->
+            nil
 
-      {line, rest} ->
-        parse_event(
-          rest,
-          update_event(event, "data", fn
-            nil -> [line]
-            data -> [data | ["\n", line]]
-          end)
-        )
+          {line, rest} ->
+            parse_event_with_data(rest, event, [line], ["\n", line])
+        end
+
+      <<"\n", rest::binary>> ->
+        parse_event_with_data(rest, event, [""], ["\n"])
+
+      <<"\r\n", rest::binary>> ->
+        parse_event_with_data(rest, event, [""], ["\n"])
+
+      <<"\r", rest::binary>> ->
+        parse_event_with_data(rest, event, [""], ["\n"])
+
+      rest ->
+        case ignore_line(rest) do
+          nil ->
+            nil
+
+          rest ->
+            parse_event(rest, event)
+        end
     end
   end
 
-  defp parse_event(<<"event:", rest::binary>>, event) do
-    case rest |> ignore_leading(" ") |> take_line([]) do
-      nil ->
-        nil
+  defp parse_event(<<"event", rest::binary>>, event) do
+    case rest do
+      <<":", rest::binary>> ->
+        case rest |> ignore_leading(" ") |> take_line([]) do
+          nil ->
+            nil
 
-      {line, rest} ->
-        parse_event(rest, update_event(event, "event", fn _ -> line end))
+          {line, rest} ->
+            parse_event(rest, update_event(event, "event", fn _ -> line end))
+        end
+
+      <<"\n", rest::binary>> ->
+        parse_event(rest, update_event(event, "event", fn _ -> "" end))
+
+      <<"\r\n", rest::binary>> ->
+        parse_event(rest, update_event(event, "event", fn _ -> "" end))
+
+      <<"\r", rest::binary>> ->
+        parse_event(rest, update_event(event, "event", fn _ -> "" end))
+
+      rest ->
+        case ignore_line(rest) do
+          nil ->
+            nil
+
+          rest ->
+            parse_event(rest, event)
+        end
     end
   end
 
@@ -57,11 +93,11 @@ defmodule ServerSentEvents.Parser do
 
   # Comments are ignored
   defp parse_event(<<":", rest::binary>>, event) do
-    case take_line(rest, []) do
+    case ignore_line(rest) do
       nil ->
         nil
 
-      {_line, rest} ->
+      rest ->
         parse_event(rest, event)
     end
   end
@@ -69,6 +105,16 @@ defmodule ServerSentEvents.Parser do
   # Byte-order mark (BOM) is ignored
   defp parse_event(<<"\uFEFF", rest::binary>>, event) do
     {event, rest}
+  end
+
+  defp parse_event_with_data(rest, event, initial_data, additional_data) do
+    parse_event(
+      rest,
+      update_event(event, "data", fn
+        nil -> initial_data
+        data -> [data | additional_data]
+      end)
+    )
   end
 
   defp process_event(event) when not is_nil(event) do
@@ -105,4 +151,10 @@ defmodule ServerSentEvents.Parser do
 
   defp ignore_leading(<<char::utf8, rest::binary>>, <<char::utf8>>), do: rest
   defp ignore_leading(rest, _char), do: rest
+
+  defp ignore_line(<<"\n", rest::binary>>), do: rest
+  defp ignore_line(<<"\r\n", rest::binary>>), do: rest
+  defp ignore_line(<<"\r", rest::binary>>), do: rest
+  defp ignore_line(<<_char::utf8, rest::binary>>), do: ignore_line(rest)
+  defp ignore_line(<<>>), do: nil
 end
