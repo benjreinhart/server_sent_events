@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml/badge.svg)](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml)
 [![License](https://img.shields.io/hexpm/l/server_sent_events.svg)](https://github.com/benjreinhart/server_sent_events/blob/main/LICENSE.md)
-[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hex.pm/packages/server_sent_events)
+[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hexdocs.pm/server_sent_events/readme.html)
 
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
@@ -11,9 +11,9 @@ This module fully conforms to the official [Server Sent Events specification](ht
 ## Usage
 
 ```elixir
-{events, rest} = ServerSentEvents.parse("event: event\ndata: {\"complete\":true}\n\n")
+{events, buffer} = ServerSentEvents.parse("event: event\ndata: {\"complete\":true}\n\n")
 IO.inspect(events)   # [%{event: "event", data: "{\"complete\":true}\n"}]
-IO.inspect(rest)     # ""
+IO.inspect(buffer)   # ""
 ```
 
 Parsing a chunk containing zero or more events followed by an incomplete event returns the incomplete data.
@@ -98,3 +98,13 @@ def deps do
   ]
 end
 ```
+
+## Benchmarking
+
+Run the local benchmark with:
+
+```sh
+mix bench
+```
+
+The benchmark exercises both large complete payloads and large payloads that end with an incomplete trailing event, and reports execution time and memory usage.

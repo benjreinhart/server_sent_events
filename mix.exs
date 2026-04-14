@@ -19,13 +19,20 @@ defmodule ServerSentEvents.MixProject do
       homepage_url: @github_repo_url,
       package: package(),
       deps: deps(),
-      docs: docs()
+      docs: docs(),
+      aliases: aliases()
     ]
   end
 
   def application do
     [
       extra_applications: [:logger]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [bench: :dev]
     ]
   end
 
@@ -45,7 +52,14 @@ defmodule ServerSentEvents.MixProject do
 
   defp deps do
     [
+      {:benchee, "~> 1.3", only: :dev, runtime: false},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      bench: "run bench/parse_bench.exs"
     ]
   end
 
