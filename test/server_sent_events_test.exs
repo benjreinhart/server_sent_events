@@ -1,280 +1,285 @@
 defmodule ServerSentEventsTest do
   use ExUnit.Case, async: true
-  doctest ServerSentEvents
 
-  test "parse basic server sent events" do
-    data = """
-    id: 1
-    event: starting
-    data: {"status":"starting","progress":0}
+  test "basic example" do
+    stream = """
+    id: 1234
+    event: event
+    data: some data
+    retry: 5000
 
-    id: 2
-    event: updating
-    data:{"status":"processing","progress":45}
+    event:another_event
+    data: some more data
+    unknown: ignored
 
-    retry: 15000
-
-    id: 3
-    event: updating
-    data: {
-    data:   "status": "still_processing",
-    data:   "progress": 98
-    data: }
-
-    id: \u0000
-    invalid: value
-
-    id: 4
-    event: finishing
+    event: stopping
     data: [DONE]
 
     """
 
-    {events, rest} = ServerSentEvents.parse(data)
-
-    assert rest == ""
+    {%ServerSentEvents{}, events} = ServerSentEvents.parse(stream)
 
     assert events == [
-             %{
-               id: "1",
-               event: "starting",
-               data: "{\"status\":\"starting\",\"progress\":0}"
-             },
-             %{
-               id: "2",
-               event: "updating",
-               data: "{\"status\":\"processing\",\"progress\":45}"
-             },
-             %{
-               retry: 15000
-             },
-             %{
-               id: "3",
-               event: "updating",
-               data: "{\n  \"status\": \"still_processing\",\n  \"progress\": 98\n}"
-             },
-             %{
-               id: "4",
-               event: "finishing",
-               data: "[DONE]"
-             }
+             %{id: "1234", event: "event", data: "some data", retry: "5000"},
+             %{event: "another_event", data: "some more data"},
+             %{event: "stopping", data: "[DONE]"}
            ]
   end
 
-  test "ignores BOM" do
-    {events, rest} = ServerSentEvents.parse(<<0xEF, 0xBB, 0xBF>>)
+  test "basic incomplete event" do
+    chunk = """
+    id: 1234
+    event: event
+    """
 
-    assert rest == ""
-    assert events == []
+    {state, []} = ServerSentEvents.parse(chunk)
+
+    chunk = """
+    data: some data
+    retry: 5000
+    """
+
+    {state, []} = ServerSentEvents.parse(state, chunk)
+
+    chunk = "\n"
+
+    {%ServerSentEvents{}, events} = ServerSentEvents.parse(state, chunk)
+
+    assert events == [%{id: "1234", event: "event", data: "some data", retry: "5000"}]
   end
 
-  test "parse with empty string" do
-    {events, rest} = ServerSentEvents.parse("")
-
-    assert rest == ""
-    assert events == []
+  test "empty stream" do
+    {state, []} = ServerSentEvents.parse("")
+    {state, []} = ServerSentEvents.parse(state, "")
+    {state, []} = ServerSentEvents.parse(state, "\n")
+    {state, []} = ServerSentEvents.parse(state, "\n")
+    {%ServerSentEvents{}, []} = ServerSentEvents.parse(state, "")
   end
 
-  test "parser ignores empty events" do
-    {events, rest} = ServerSentEvents.parse("\n\n\r\n\r\n\n\n")
-
-    assert rest == ""
-    assert events == []
+  test "ignores leading BOM" do
+    stream = <<0xFEFF::utf8, "data: some data\n\n">>
+    {%ServerSentEvents{}, events} = ServerSentEvents.parse(stream)
+    assert events == [%{data: "some data"}]
   end
 
-  test "space after colon is optional" do
-    {events, rest} = ServerSentEvents.parse("event:event_type\ndata:data\n\n")
+  test "does not ignore BOM when placed elsewhere" do
+    {state, []} = ServerSentEvents.parse("event: bom\ndata:")
 
-    assert rest == ""
-    assert events == [%{event: "event_type", data: "data"}]
+    {%ServerSentEvents{}, [event]} =
+      ServerSentEvents.parse(state, <<0xFEFF::utf8, "post bom\n\n">>)
+
+    assert event == %{event: "bom", data: <<0xFEFF::utf8, "post bom">>}
   end
 
-  test "strips exactly on leading space after colon but no more" do
-    {events, rest} = ServerSentEvents.parse("event:  event_type\ndata:  data\n\n")
+  test "supports incomplete keys and values" do
+    {state, []} = ServerSentEvents.parse("i")
+    {state, []} = ServerSentEvents.parse(state, "d")
+    {state, []} = ServerSentEvents.parse(state, ": va")
+    {state, []} = ServerSentEvents.parse(state, "lue")
+    {state, []} = ServerSentEvents.parse(state, "\n")
+    {state, []} = ServerSentEvents.parse(state, "dat")
+    {state, []} = ServerSentEvents.parse(state, "a: some ")
+    {state, []} = ServerSentEvents.parse(state, "other value\n")
+    {%ServerSentEvents{}, [event]} = ServerSentEvents.parse(state, "\n")
 
-    assert rest == ""
-    assert events == [%{event: " event_type", data: " data"}]
+    assert event == %{id: "value", data: "some other value"}
   end
 
-  test "colon is optional" do
-    {events, rest} = ServerSentEvents.parse("event\n\n")
+  describe "line separators" do
+    test "LF separates lines" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event: foo\ndata: bar\n\n")
+      assert events == [%{event: "foo", data: "bar"}]
+    end
 
-    assert rest == ""
-    assert events == [%{event: ""}]
+    test "CRLF separates lines" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event: foo\r\ndata: bar\r\n\r\n")
+      assert events == [%{event: "foo", data: "bar"}]
+    end
 
-    {events, rest} = ServerSentEvents.parse("data\n\n")
+    test "CR separates lines" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event: foo\rdata: bar\r\r")
+      assert events == [%{event: "foo", data: "bar"}]
+    end
 
-    assert rest == ""
-    assert events == [%{data: ""}]
+    test "handles CRLF split across chunks" do
+      {state, []} = ServerSentEvents.parse("event: foo\r\ndata: bar\r")
+      {state, []} = ServerSentEvents.parse(state, "\n")
+      {state, events} = ServerSentEvents.parse(state, "\r")
+      assert events == [%{event: "foo", data: "bar"}]
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse(state, "\n")
+    end
+
+    test "handles CR split across chunks" do
+      {state, []} = ServerSentEvents.parse("event: foo\rdata: bar\r")
+      {state, []} = ServerSentEvents.parse(state, "retry: 1000\r")
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse(state, "\r")
+      assert events == [%{event: "foo", data: "bar", retry: "1000"}]
+    end
+
+    test "when eof before finalizing event with CR" do
+      {state, []} = ServerSentEvents.parse("event: foo")
+      {state, []} = ServerSentEvents.parse(state, "\r")
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse(state, "\r")
+      assert events == [%{event: "foo"}]
+    end
+
+    test "mix and match line separators" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("id: 1\revent: foo\ndata: bar\r\n\n")
+      assert events == [%{id: "1", event: "foo", data: "bar"}]
+    end
   end
 
-  test "parser ignores comments" do
-    {events, rest} =
-      ServerSentEvents.parse(
-        ": this is a comment\n\nevent: name\ndata: data\n\n: this is a comment\n\n"
-      )
-
-    assert rest == ""
-    assert events == [%{event: "name", data: "data"}]
+  describe "empty values" do
+    test "handles empty values" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event:\ndata:\n\n")
+      assert events == [%{event: "", data: ""}]
+    end
   end
 
-  test "parse incomplete" do
-    {events, rest} = ServerSentEvents.parse("event: event_name\n")
+  describe "keys" do
+    test "incomplete keys" do
+      {state, []} = ServerSentEvents.parse("e")
+      {state, []} = ServerSentEvents.parse(state, "v")
+      {state, []} = ServerSentEvents.parse(state, "ent: foo\n")
+      {state, []} = ServerSentEvents.parse(state, "d")
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse(state, "ata: bar\n\n")
+      assert events == [%{event: "foo", data: "bar"}]
+    end
 
-    assert rest == "event: event_name\n"
-    assert events == []
+    test "keys with no value" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event\ndata: value\n\n")
+      assert events == [%{event: "", data: "value"}]
+    end
 
-    {events, rest} = ServerSentEvents.parse("event: event_name\ndata: foo")
+    test "repeated id, event, and retry keys will overwrite their previous value" do
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("event: foo\nevent: bar\n\n")
+      assert events == [%{event: "bar"}]
 
-    assert rest == "event: event_name\ndata: foo"
-    assert events == []
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("id: 1\nid: 2\n\n")
+      assert events == [%{id: "2"}]
 
-    {events, rest} = ServerSentEvents.parse("event: event_name\ndata: foo bar\n\n")
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse("retry: 1000\nretry: 2000\n\n")
+      assert events == [%{retry: "2000"}]
+    end
 
-    assert rest == ""
-    assert events == [%{event: "event_name", data: "foo bar"}]
+    test "ignores unrecognized keys" do
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse("unknown: value\n\n")
+
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse("event: foo\nunknown: value\ndata: bar\n\n")
+
+      assert event == %{event: "foo", data: "bar"}
+    end
+
+    test "ignores unreognized keys with no value" do
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse("unknown\n\n")
+
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse("event: foo\nunknown\nid: 1234\n\n")
+
+      assert event == %{event: "foo", id: "1234"}
+    end
   end
 
-  test "parse data that spans multiple lines" do
-    {events, rest} = ServerSentEvents.parse("event: multi\ndata: foo\ndata: bar\ndata: baz\n\n")
+  describe "values" do
+    test "a single leading space is ignored" do
+      {%ServerSentEvents{}, [%{id: "id"}]} = ServerSentEvents.parse("id:id\n\n")
+      {%ServerSentEvents{}, [%{id: "id"}]} = ServerSentEvents.parse("id: id\n\n")
+      {%ServerSentEvents{}, [%{id: " id"}]} = ServerSentEvents.parse("id:  id\n\n")
 
-    assert rest == ""
-    assert events == [%{event: "multi", data: "foo\nbar\nbaz"}]
+      {%ServerSentEvents{}, [%{event: "event"}]} = ServerSentEvents.parse("event:event\n\n")
+      {%ServerSentEvents{}, [%{event: "event"}]} = ServerSentEvents.parse("event: event\n\n")
+      {%ServerSentEvents{}, [%{event: " event"}]} = ServerSentEvents.parse("event:  event\n\n")
+
+      {%ServerSentEvents{}, [%{data: "data"}]} = ServerSentEvents.parse("data:data\n\n")
+      {%ServerSentEvents{}, [%{data: "data"}]} = ServerSentEvents.parse("data: data\n\n")
+      {%ServerSentEvents{}, [%{data: " data"}]} = ServerSentEvents.parse("data:  data\n\n")
+
+      {%ServerSentEvents{}, [%{retry: "retry"}]} = ServerSentEvents.parse("retry:retry\n\n")
+      {%ServerSentEvents{}, [%{retry: "retry"}]} = ServerSentEvents.parse("retry: retry\n\n")
+      {%ServerSentEvents{}, [%{retry: " retry"}]} = ServerSentEvents.parse("retry:  retry\n\n")
+    end
+
+    test "a single leading space is still ignored when chunked" do
+      {state, []} = ServerSentEvents.parse("event:")
+      {state, []} = ServerSentEvents.parse(state, " ")
+      {%ServerSentEvents{}, [%{event: "event"}]} = ServerSentEvents.parse(state, "event\n\n")
+
+      {state, []} = ServerSentEvents.parse("event:")
+      {state, []} = ServerSentEvents.parse(state, " ")
+      {%ServerSentEvents{}, [%{event: " event"}]} = ServerSentEvents.parse(state, " event\n\n")
+    end
   end
 
-  test "uses last event as the event type when multiple are specified" do
-    {events, rest} =
-      ServerSentEvents.parse("event: event1\nevent: event2\nevent: event3\ndata: data\n\n")
+  describe "data" do
+    test "multiple data lines are concatenated with newlines" do
+      {%ServerSentEvents{}, events} =
+        ServerSentEvents.parse("data: line 1\ndata: line 2\ndata: line 3\n\n")
 
-    assert rest == ""
-    assert events == [%{event: "event3", data: "data"}]
+      assert events == [%{data: "line 1\nline 2\nline 3"}]
+    end
+
+    test "multiple data lines arriving in incomplete chunks are still concatenated with newlines" do
+      {state, []} = ServerSentEvents.parse("event: data_")
+      {state, []} = ServerSentEvents.parse(state, "test\nda")
+      {state, []} = ServerSentEvents.parse(state, "ta")
+      {state, []} = ServerSentEvents.parse(state, ": lin")
+      {state, []} = ServerSentEvents.parse(state, "e 1")
+      {state, []} = ServerSentEvents.parse(state, "\ndata: ")
+      {state, []} = ServerSentEvents.parse(state, "line 2")
+      {state, []} = ServerSentEvents.parse(state, "\ndata: line 3\n")
+      {%ServerSentEvents{}, events} = ServerSentEvents.parse(state, "\n")
+
+      assert events == [%{event: "data_test", data: "line 1\nline 2\nline 3"}]
+    end
   end
 
-  test "empty event resets non-empty event when it follows non-empty event" do
-    {events, rest} =
-      ServerSentEvents.parse("event: event1\nevent\ndata: data\n\n")
+  describe "comments" do
+    test "allows comments but ignores them" do
+      # Standalone comment
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse(": this is a comment\n\n")
 
-    assert rest == ""
-    assert events == [%{event: "", data: "data"}]
+      # Standalone comment followed by event
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse(": this is a comment\n\nid: 1\nevent:foo\ndata: bar\n\n")
 
-    {events, rest} =
-      ServerSentEvents.parse("event: event1\nevent:\ndata: data\n\n")
+      assert event == %{id: "1", event: "foo", data: "bar"}
 
-    assert rest == ""
-    assert events == [%{event: "", data: "data"}]
-  end
+      # Event with leading comment
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse(": this is a comment\nid: 1\nevent:foo\ndata: bar\n\n")
 
-  test "parses empty data" do
-    {events, rest} = ServerSentEvents.parse("data\n\ndata\ndata\n\ndata:\n")
+      assert event == %{id: "1", event: "foo", data: "bar"}
 
-    assert rest == "data:\n"
-    assert events == [%{data: ""}, %{data: "\n"}]
+      # Event with comment inside it
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse("id: 1\nevent:foo\n: this is a comment\ndata: bar\n\n")
 
-    {events, rest} = ServerSentEvents.parse("data\r\n\r\ndata\r\ndata\r\n\r\ndata:\r\n")
+      assert event == %{id: "1", event: "foo", data: "bar"}
 
-    assert rest == "data:\r\n"
-    assert events == [%{data: ""}, %{data: "\n"}]
+      # Event with trailing comment
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse("id: 1\nevent:foo\ndata: bar\n: this is a comment\n\n")
 
-    {events, rest} = ServerSentEvents.parse("data\r\rdata\rdata\r\rdata:\r")
+      assert event == %{id: "1", event: "foo", data: "bar"}
 
-    assert rest == "data:\r"
-    assert events == [%{data: ""}, %{data: "\n"}]
-  end
+      # Event followed by a standalone comment
+      {%ServerSentEvents{}, [event]} =
+        ServerSentEvents.parse("id: 1\nevent:foo\ndata: bar\n\n: this is a comment\n")
 
-  test "parse recognizes different line separators" do
-    {events, rest} = ServerSentEvents.parse("event: event_name\r\ndata: data\r\n\r\n")
+      assert event == %{id: "1", event: "foo", data: "bar"}
 
-    assert rest == ""
-    assert events == [%{event: "event_name", data: "data"}]
+      # comment in a comment line is still a comment
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse(": this is a comment: with a colon\n\n")
+    end
 
-    {events, rest} = ServerSentEvents.parse("event: event_name\rdata: data\r\r")
-
-    assert rest == ""
-    assert events == [%{event: "event_name", data: "data"}]
-  end
-
-  test "handles multibyte characters" do
-    {events, rest} = ServerSentEvents.parse("event: €豆腐\ndata: 我現在都看實況不玩遊戲\n\n")
-
-    assert rest == ""
-    assert events == [%{event: "€豆腐", data: "我現在都看實況不玩遊戲"}]
-
-    {events, rest} = ServerSentEvents.parse("event: 👋\ndata: Hello 🔥\n\n")
-
-    assert rest == ""
-    assert events == [%{event: "👋", data: "Hello 🔥"}]
-  end
-
-  test "handles split multibyte characters" do
-    # The '🚀' emoji is 4 bytes. Here we split the string in the middle of the emoji
-    # to test that the parser can handle incomplete chunks where the end of one chunk
-    # falls in the middle of a multibyte character.
-    <<first_chunk::bytes-size(8), second_chunk::bytes-size(4)>> = "data: 🚀\n\n"
-
-    {[], ^first_chunk} = ServerSentEvents.parse(first_chunk)
-    {events, rest} = ServerSentEvents.parse(first_chunk <> second_chunk)
-
-    assert rest == ""
-    assert events == [%{data: "🚀"}]
-  end
-
-  test "parses retry event" do
-    {events, rest} = ServerSentEvents.parse("retry: 10000\n\n")
-
-    assert rest == ""
-    assert events == [%{retry: 10000}]
-  end
-
-  test "ignores retry when value is not ascii digits" do
-    {events, rest} = ServerSentEvents.parse("retry: abc\n\n")
-
-    assert rest == ""
-    assert events == []
-  end
-
-  test "ignores non-recognized event fields" do
-    {events, rest} = ServerSentEvents.parse("unknown: value\n\n")
-
-    assert rest == ""
-    assert events == []
-
-    {events, rest} = ServerSentEvents.parse("unknown\n\n")
-
-    assert rest == ""
-    assert events == []
-
-    {events, rest} = ServerSentEvents.parse(" :\n\n")
-
-    assert rest == ""
-    assert events == []
-
-    {events, rest} = ServerSentEvents.parse(" \n\n")
-
-    assert rest == ""
-    assert events == []
-
-    {events, rest} = ServerSentEvents.parse("unknown\ndata: data\n\n")
-
-    assert rest == ""
-    assert events == [%{data: "data"}]
-  end
-
-  test "consecutive ids override one another" do
-    {events, rest} = ServerSentEvents.parse("id: 1\nid:2\ndata: data\n\n")
-
-    assert rest == ""
-    assert events == [%{id: "2", data: "data"}]
-
-    {events, rest} = ServerSentEvents.parse("id: 1\nid\ndata: data\n\n")
-
-    assert rest == ""
-    assert events == [%{id: "", data: "data"}]
-  end
-
-  test "ignores null ids" do
-    {events, rest} = ServerSentEvents.parse("id: \u0000\n\n")
-
-    assert rest == ""
-    assert events == []
+    test "allows comments but ignores them when split across chunks" do
+      {state, []} = ServerSentEvents.parse("")
+      {state, []} = ServerSentEvents.parse(state, ": ")
+      {state, []} = ServerSentEvents.parse(state, "comments begin with a colon: '")
+      {state, []} = ServerSentEvents.parse(state, ": this is a comment'\n")
+      {state, []} = ServerSentEvents.parse(state, "\n")
+      {%ServerSentEvents{}, []} = ServerSentEvents.parse(state, "")
+    end
   end
 end

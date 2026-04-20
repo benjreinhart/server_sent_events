@@ -1,177 +1,245 @@
 defmodule ServerSentEvents do
-  @moduledoc """
-  This module implements a parser for Server Sent Events. See the official
-  specification for details on parsing and interpreting the event stream.
+  @type state :: %__MODULE__{
+          phase: :start | :field | :key | :value_start | :value | :skip_line | :cr,
+          key: nil | binary() | :event | :data | :id | :retry,
+          value: nil | binary() | [binary()],
+          event: nil | map()
+        }
 
-  - https://html.spec.whatwg.org/multipage/server-sent-events.html
-  """
+  defstruct [:phase, :key, :value, :event]
 
-  @compile {:inline, ignore_leading: 2}
-
-  @doc ~s"""
-  Parses a chunk of data into a list of Server Sent Event messages.
-
-  Returns a tuple containing the list of parsed events and the remaining data
-  from the chunk if it contained an incomplete event.
-
-  There are only four possible keys in the event map: `:id`, `:event`, `:data`, `:retry`.
-
-  ## Examples
-
-      iex> ServerSentEvents.parse("event: event\\ndata: {\\"complete\\":")
-      {[], "event: event\\ndata: {\\"complete\\":"}
-
-      iex> ServerSentEvents.parse("event: event\\ndata: {\\"complete\\":true}\\n\\n")
-      {[%{event: "event", data: "{\\"complete\\":true}"}], ""}
-
-  """
-  def parse(chunk) when is_binary(chunk) do
-    parse(chunk, [])
+  def parse(input) when is_binary(input) do
+    parse(%__MODULE__{phase: :start}, input)
   end
 
-  # Byte order mark is only supposed to appear once at the start of the stream according
-  # to the spec. Thus, we only check for it one time for each parse invocation, though
-  # parse will be called multiple times for streams with more than one chunk.
-  defp parse(<<"\uFEFF", rest::binary>>, events) do
-    parse(rest, events)
+  def parse(%__MODULE__{phase: phase, key: key, value: value, event: event}, input)
+      when is_binary(input) do
+    parse(input, phase, key, value, event, [])
   end
 
-  defp parse(chunk, events) do
-    case parse_event(chunk, %{}) do
-      nil ->
-        {Enum.reverse(events), chunk}
+  defp parse(<<>>, phase, key, value, event, events) do
+    {%__MODULE__{phase: phase, key: key, value: value, event: event}, Enum.reverse(events)}
+  end
 
-      {event, rest} ->
-        case Enum.reduce(event, %{}, &process_field/2) do
-          event when event == %{} ->
-            parse(rest, events)
+  # Event separator
+  defp parse(<<byte, rest::binary>>, :field, nil, nil, event, events) when byte in ~c'\n\r' do
+    case rest do
+      <<?\n, rest::binary>> when byte == ?\r ->
+        parse(rest, :field, nil, nil, nil, finalize(events, event))
 
-          event ->
-            parse(rest, [event | events])
-        end
+      <<>> when byte == ?\r ->
+        # Eagerly finalize the event if the stream ends with a CR. However, carry over
+        # state about the CR so that if the next chunk starts with a LF, we know to skip it.
+        events = events |> finalize(event) |> Enum.reverse()
+        {%__MODULE__{phase: :cr, event: nil, key: nil, value: nil}, events}
+
+      rest ->
+        parse(rest, :field, nil, nil, nil, finalize(events, event))
     end
   end
 
-  defp parse_event(<<"\n", rest::binary>>, event) do
-    {event, rest}
-  end
+  # Parse a field
+  defp parse(input, :field, nil, nil, event, events) do
+    case input do
+      <<"event:", rest::binary>> ->
+        parse(rest, :value_start, :event, nil, event, events)
 
-  defp parse_event(<<"\r", rest::binary>>, event) do
-    {event, ignore_leading(rest, "\n")}
-  end
+      <<"data:", rest::binary>> ->
+        parse(rest, :value_start, :data, nil, event, events)
 
-  defp parse_event(<<>>, _event) do
-    nil
-  end
+      <<"id:", rest::binary>> ->
+        parse(rest, :value_start, :id, nil, event, events)
 
-  defp parse_event(chunk, event) do
-    case parse_field(chunk, []) do
-      nil ->
-        nil
+      <<"retry:", rest::binary>> ->
+        parse(rest, :value_start, :retry, nil, event, events)
 
-      {[?a, ?t, ?a, ?d], value, rest} ->
-        data =
-          case event do
-            %{data: data} ->
-              [data | ["\n", value]]
+      # A comment line (starting with a colon) is to be ignored
+      <<?:, rest::binary>> ->
+        skip_line(rest, event, events)
 
-            _ ->
-              value
-          end
-
-        parse_event(rest, Map.put(event, :data, data))
-
-      {[?t, ?n, ?e, ?v, ?e], value, rest} ->
-        parse_event(rest, Map.put(event, :event, value))
-
-      {[?d, ?i], value, rest} ->
-        parse_event(rest, Map.put(event, :id, value))
-
-      {[?y, ?r, ?t, ?e, ?r], value, rest} ->
-        parse_event(rest, Map.put(event, :retry, value))
-
-      {_name, _value, rest} ->
-        parse_event(rest, event)
+      input ->
+        do_key(input, input, 0, nil, event, events)
     end
   end
 
-  # 'field' here is a reference to the 'field' grammar definition in the spec.
-  # https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream
-  defp parse_field(<<"\n", rest::binary>>, name), do: {name, [], rest}
-  defp parse_field(<<"\r\n", rest::binary>>, name), do: {name, [], rest}
-  defp parse_field(<<"\r", rest::binary>>, name), do: {name, [], rest}
+  # A single leading space (if present) is to be ignored when parsing the value
+  defp parse(input, :value_start, key, nil, event, events) do
+    case input do
+      <<?\s, rest::binary>> ->
+        do_value(rest, rest, 0, key, nil, event, events)
 
-  defp parse_field(<<":", rest::binary>>, name) do
-    case rest |> ignore_leading(" ") |> take_line([]) do
-      nil ->
-        nil
-
-      {value, rest} ->
-        {name, value, rest}
+      input ->
+        do_value(input, input, 0, key, nil, event, events)
     end
   end
 
-  # We build the 'name' part of the 'field' as a charlist in reverse order. Since we
-  # only have a small set of known field names, we can match on the reversed charlist
-  # to determine the field name. For example, to know if the field name is "data", we
-  # can match [?a, ?t, ?a, ?d]. This keeps the code simple and efficient.
-  defp parse_field(<<char::utf8, rest::binary>>, name) do
-    parse_field(rest, [char | name])
+  # Resume parsing a field's value that was split across chunks
+  defp parse(input, :value, key, value, event, events) do
+    do_value(input, input, 0, key, value, event, events)
   end
 
-  defp parse_field(<<>>, _name) do
-    nil
+  # Resume parsing a field's key that was split across chunks
+  defp parse(input, :key, key, nil, event, events) do
+    do_key(input, input, 0, key, event, events)
   end
 
-  defp process_field({:data, data}, event) do
-    Map.put(event, :data, IO.iodata_to_binary(data))
-  end
+  # Skip a LF that immediately follows a CR from a previous chunk
+  defp parse(input, :cr, nil, nil, event, events) do
+    case input do
+      <<?\n, rest::binary>> ->
+        parse(rest, :field, nil, nil, event, events)
 
-  defp process_field({:event, name}, event) do
-    Map.put(event, :event, IO.iodata_to_binary(name))
-  end
-
-  defp process_field({:id, id}, event) do
-    case id do
-      [[], <<0>>] ->
-        # Ignore U+0000 NULL character
-        event
-
-      id ->
-        Map.put(event, :id, IO.iodata_to_binary(id))
+      input ->
+        parse(input, :field, nil, nil, event, events)
     end
   end
 
-  defp process_field({:retry, retry}, event) do
-    case retry |> IO.iodata_to_binary() |> Integer.parse() do
-      {value, _} ->
-        Map.put(event, :retry, value)
+  defp parse(input, :skip_line, nil, nil, event, events) do
+    skip_line(input, event, events)
+  end
 
-      :error ->
-        event
+  # A single leading BOM is to be ignored (if present) at the start of the stream
+  defp parse(input, :start, nil, nil, nil, []) do
+    case input do
+      <<0xFEFF::utf8, rest::binary>> ->
+        parse(rest, :field, nil, nil, nil, [])
+
+      _ ->
+        parse(input, :field, nil, nil, nil, [])
     end
   end
 
-  defp take_line(<<"\n", rest::binary>>, iodata), do: {iodata, rest}
-  defp take_line(<<"\r\n", rest::binary>>, iodata), do: {iodata, rest}
-  defp take_line(<<"\r", rest::binary>>, iodata), do: {iodata, rest}
-
-  defp take_line(<<char::utf8, rest::binary>>, iodata) do
-    take_line(rest, [iodata | [<<char::utf8>>]])
+  defp do_key(<<?:, rest::binary>>, input, len, key, event, events) do
+    case to_key(input, len, key) do
+      :ignore -> skip_line(rest, event, events)
+      key -> parse(rest, :value_start, key, nil, event, events)
+    end
   end
 
-  defp take_line(<<>>, _iodata) do
-    nil
+  defp do_key(<<byte, rest::binary>>, input, len, key, event, events) when byte in ~c'\n\r' do
+    event = put_field(event, to_key(input, len, key), "")
+
+    case rest do
+      <<?\n, rest::binary>> when byte == ?\r ->
+        parse(rest, :field, nil, nil, event, events)
+
+      <<>> when byte == ?\r ->
+        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+
+      rest ->
+        parse(rest, :field, nil, nil, event, events)
+    end
   end
 
-  # If we're here, we were unable to pull a utf8 character out of the binary
-  # This means the binary is either not valid utf8 or we are at the end of a
-  # chunk that was split in the middle of a multibyte character. This clause
-  # assumes the latter case.
-  defp take_line(rest, _iodata) when byte_size(rest) < 4 do
-    nil
+  defp do_key(<<_, rest::binary>>, input, len, key, event, events) do
+    do_key(rest, input, len + 1, key, event, events)
   end
 
-  defp ignore_leading(<<char::utf8, rest::binary>>, <<char::utf8>>), do: rest
-  defp ignore_leading(rest, _char), do: rest
+  defp do_key(<<>>, input, len, key, event, events) do
+    part = binary_part(input, 0, len) |> :binary.copy()
+
+    buffer =
+      cond do
+        is_nil(key) -> part
+        is_binary(key) -> key <> part
+      end
+
+    {%__MODULE__{phase: :key, key: buffer, value: nil, event: event}, Enum.reverse(events)}
+  end
+
+  defp do_value(<<byte, rest::binary>>, input, len, key, value, event, events)
+       when byte in ~c'\n\r' do
+    event = put_field(event, key, to_value(input, len, value))
+
+    case rest do
+      <<?\n, rest::binary>> when byte == ?\r ->
+        parse(rest, :field, nil, nil, event, events)
+
+      <<>> when byte == ?\r ->
+        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+
+      rest ->
+        parse(rest, :field, nil, nil, event, events)
+    end
+  end
+
+  defp do_value(<<_, rest::binary>>, input, len, key, value, event, events) do
+    do_value(rest, input, len + 1, key, value, event, events)
+  end
+
+  defp do_value(<<>>, input, len, key, value, event, events) do
+    value = to_value(input, len, value)
+    {%__MODULE__{phase: :value, key: key, value: value, event: event}, Enum.reverse(events)}
+  end
+
+  defp skip_line(<<byte, rest::binary>>, event, events) when byte in ~c'\n\r' do
+    case rest do
+      <<?\n, rest::binary>> when byte == ?\r ->
+        parse(rest, :field, nil, nil, event, events)
+
+      <<>> when byte == ?\r ->
+        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+
+      rest ->
+        parse(rest, :field, nil, nil, event, events)
+    end
+  end
+
+  defp skip_line(<<_, rest::binary>>, event, events) do
+    skip_line(rest, event, events)
+  end
+
+  defp skip_line(<<>>, event, events) do
+    {%__MODULE__{phase: :skip_line, key: nil, value: nil, event: event}, Enum.reverse(events)}
+  end
+
+  defp copy_binary_part(input, start, len) do
+    binary_part(input, start, len) |> :binary.copy()
+  end
+
+  defp to_key(input, len, nil) do
+    copy_binary_part(input, 0, len) |> to_key()
+  end
+
+  defp to_key(_input, 0, key) when is_binary(key) do
+    to_key(key)
+  end
+
+  defp to_key(input, len, key) when is_binary(key) and len > 0 do
+    to_key(key <> binary_part(input, 0, len))
+  end
+
+  defp to_key("event"), do: :event
+  defp to_key("data"), do: :data
+  defp to_key("id"), do: :id
+  defp to_key("retry"), do: :retry
+  defp to_key(_key), do: :ignore
+
+  defp to_value(input, len, nil), do: copy_binary_part(input, 0, len)
+  defp to_value(input, len, buffer), do: [buffer | copy_binary_part(input, 0, len)]
+
+  defp put_field(event, :data, value) do
+    case event || %{} do
+      %{data: data} ->
+        # We keep data as an iolist until the event is finalized so that
+        # we can efficiently append to it if there are multiple data lines
+        %{event | data: [data | [?\n | value]]}
+
+      event ->
+        Map.put(event, :data, :erlang.iolist_to_binary(value))
+    end
+  end
+
+  defp put_field(event, :ignore, _value), do: event
+
+  defp put_field(event, key, value) do
+    Map.put(event || %{}, key, :erlang.iolist_to_binary(value))
+  end
+
+  defp finalize(events, %{data: data} = event) when is_list(data) do
+    [%{event | data: :erlang.iolist_to_binary(data)} | events]
+  end
+
+  defp finalize(events, %{} = event), do: [event | events]
+  defp finalize(events, nil), do: events
 end
