@@ -5,19 +5,22 @@ defmodule ServerSentEvents do
   details on parsing and interpreting the event stream.
 
   This library is focused on parsing the event stream itself, and does not provide
-  behavior regarding the interpretation of the event data or the management of the underlying
-  HTTP connection. For example, the `retry` field is parsed and included in the emitted event
-  maps, but it is up to the caller to decide how to interpret it (e.g. as an integer) and what
-  to do with it. The same goes for the `id` field and the `Last-Event-ID` behavior, etc.
+  behavior regarding the management of the underlying HTTP connection or EventSource
+  state outside a single event. It parses `id` fields as binaries, ignoring any `id`
+  field that contains a NULL byte. It parses `retry` fields as non-negative integers,
+  ignoring invalid values. It emits only events that contain a `data` field. Callers
+  are still responsible for behavior such as tracking, resetting, and applying the
+  last event ID, applying retry delays, reconnecting, interpreting response headers,
+  and deciding how to consume event data.
   """
 
   alias ServerSentEvents.Parser
 
   @type event :: %{
-          optional(:data) => binary(),
+          required(:data) => binary(),
           optional(:event) => binary(),
           optional(:id) => binary(),
-          optional(:retry) => binary()
+          optional(:retry) => non_neg_integer()
         }
 
   @doc """

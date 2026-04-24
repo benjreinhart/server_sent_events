@@ -1,4 +1,11 @@
 defmodule ServerSentEvents.Parser do
+  @type event :: %{
+          required(:data) => binary(),
+          optional(:event) => binary(),
+          optional(:id) => binary(),
+          optional(:retry) => non_neg_integer()
+        }
+
   @type state :: %__MODULE__{
           phase: :start | :field | :key | :value_start | :value | :skip_line | :cr,
           key: nil | binary() | :event | :data | :id | :retry,
@@ -230,16 +237,47 @@ defmodule ServerSentEvents.Parser do
     end
   end
 
+  defp put_field(event, :event, value) do
+    Map.put(event || %{}, :event, :erlang.iolist_to_binary(value))
+  end
+
+  defp put_field(event, :id, value) do
+    value = :erlang.iolist_to_binary(value)
+
+    case :binary.match(value, <<0>>) do
+      :nomatch -> Map.put(event || %{}, :id, value)
+      {_position, _length} -> event
+    end
+  end
+
+  defp put_field(event, :retry, value) do
+    value = :erlang.iolist_to_binary(value)
+
+    case parse_int(value) do
+      :error -> event
+      integer -> Map.put(event || %{}, :retry, integer)
+    end
+  end
+
   defp put_field(event, :ignore, _value), do: event
 
-  defp put_field(event, key, value) do
-    Map.put(event || %{}, key, :erlang.iolist_to_binary(value))
+  defp parse_int(<<>>), do: :error
+  defp parse_int(input) when is_binary(input), do: parse_int(input, 0)
+
+  defp parse_int(<<>>, int), do: int
+  defp parse_int(<<c, r::binary>>, int) when c in ?0..?9, do: parse_int(r, int * 10 + (c - ?0))
+  defp parse_int(_, _), do: :error
+
+  defp finalize(events, %{data: data} = event) do
+    event =
+      if is_list(data) do
+        %{event | data: :erlang.iolist_to_binary(data)}
+      else
+        event
+      end
+
+    [event | events]
   end
 
-  defp finalize(events, %{data: data} = event) when is_list(data) do
-    [%{event | data: :erlang.iolist_to_binary(data)} | events]
-  end
-
-  defp finalize(events, %{} = event), do: [event | events]
-  defp finalize(events, nil), do: events
+  defp finalize(events, _), do: events
 end

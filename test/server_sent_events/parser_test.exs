@@ -22,7 +22,7 @@ defmodule ServerSentEvents.ParserTest do
     {events, %Parser{}} = Parser.parse(stream)
 
     assert events == [
-             %{id: "1234", event: "event", data: "some data", retry: "5000"},
+             %{id: "1234", event: "event", data: "some data", retry: 5000},
              %{event: "another_event", data: "some more data"},
              %{event: "stopping", data: "[DONE]"}
            ]
@@ -47,7 +47,7 @@ defmodule ServerSentEvents.ParserTest do
 
     {events, %Parser{}} = Parser.parse(state, chunk)
 
-    assert events == [%{id: "1234", event: "event", data: "some data", retry: "5000"}]
+    assert events == [%{id: "1234", event: "event", data: "some data", retry: 5000}]
   end
 
   test "empty stream" do
@@ -115,14 +115,14 @@ defmodule ServerSentEvents.ParserTest do
       {[], state} = Parser.parse("event: foo\rdata: bar\r")
       {[], state} = Parser.parse(state, "retry: 1000\r")
       {events, %Parser{}} = Parser.parse(state, "\r")
-      assert events == [%{event: "foo", data: "bar", retry: "1000"}]
+      assert events == [%{event: "foo", data: "bar", retry: 1000}]
     end
 
     test "when eof before finalizing event with CR" do
       {[], state} = Parser.parse("event: foo")
       {[], state} = Parser.parse(state, "\r")
       {events, %Parser{}} = Parser.parse(state, "\r")
-      assert events == [%{event: "foo"}]
+      assert events == []
     end
 
     test "mix and match line separators" do
@@ -138,102 +138,142 @@ defmodule ServerSentEvents.ParserTest do
     end
   end
 
-  describe "keys" do
-    test "incomplete keys" do
-      {[], state} = Parser.parse("e")
-      {[], state} = Parser.parse(state, "v")
-      {[], state} = Parser.parse(state, "ent: foo\n")
-      {[], state} = Parser.parse(state, "d")
-      {events, %Parser{}} = Parser.parse(state, "ata: bar\n\n")
-      assert events == [%{event: "foo", data: "bar"}]
-    end
-
-    test "keys with no value" do
-      {events, %Parser{}} = Parser.parse("event\ndata: value\n\n")
-      assert events == [%{event: "", data: "value"}]
-    end
-
-    test "repeated id, event, and retry keys will overwrite their previous value" do
-      {events, %Parser{}} = Parser.parse("event: foo\nevent: bar\n\n")
-      assert events == [%{event: "bar"}]
-
-      {events, %Parser{}} = Parser.parse("id: 1\nid: 2\n\n")
-      assert events == [%{id: "2"}]
-
-      {events, %Parser{}} = Parser.parse("retry: 1000\nretry: 2000\n\n")
-      assert events == [%{retry: "2000"}]
-    end
-
-    test "ignores unrecognized keys" do
-      {[], %Parser{}} = Parser.parse("unknown: value\n\n")
-
-      {[event], %Parser{}} =
-        Parser.parse("event: foo\nunknown: value\ndata: bar\n\n")
-
-      assert event == %{event: "foo", data: "bar"}
-    end
-
-    test "ignores unreognized keys with no value" do
-      {[], %Parser{}} = Parser.parse("unknown\n\n")
-
-      {[event], %Parser{}} =
-        Parser.parse("event: foo\nunknown\nid: 1234\n\n")
-
-      assert event == %{event: "foo", id: "1234"}
-    end
+  test "incomplete keys" do
+    {[], state} = Parser.parse("e")
+    {[], state} = Parser.parse(state, "v")
+    {[], state} = Parser.parse(state, "ent: foo\n")
+    {[], state} = Parser.parse(state, "d")
+    {events, %Parser{}} = Parser.parse(state, "ata: bar\n\n")
+    assert events == [%{event: "foo", data: "bar"}]
   end
 
-  describe "values" do
-    test "a single leading space is ignored" do
-      {[%{id: "id"}], %Parser{}} = Parser.parse("id:id\n\n")
-      {[%{id: "id"}], %Parser{}} = Parser.parse("id: id\n\n")
-      {[%{id: " id"}], %Parser{}} = Parser.parse("id:  id\n\n")
+  test "keys with no value" do
+    {events, %Parser{}} = Parser.parse("event\ndata: value\n\n")
+    assert events == [%{event: "", data: "value"}]
 
-      {[%{event: "event"}], %Parser{}} = Parser.parse("event:event\n\n")
-      {[%{event: "event"}], %Parser{}} = Parser.parse("event: event\n\n")
-      {[%{event: " event"}], %Parser{}} = Parser.parse("event:  event\n\n")
-
-      {[%{data: "data"}], %Parser{}} = Parser.parse("data:data\n\n")
-      {[%{data: "data"}], %Parser{}} = Parser.parse("data: data\n\n")
-      {[%{data: " data"}], %Parser{}} = Parser.parse("data:  data\n\n")
-
-      {[%{retry: "retry"}], %Parser{}} = Parser.parse("retry:retry\n\n")
-      {[%{retry: "retry"}], %Parser{}} = Parser.parse("retry: retry\n\n")
-      {[%{retry: " retry"}], %Parser{}} = Parser.parse("retry:  retry\n\n")
-    end
-
-    test "a single leading space is still ignored when chunked" do
-      {[], state} = Parser.parse("event:")
-      {[], state} = Parser.parse(state, " ")
-      {[%{event: "event"}], %Parser{}} = Parser.parse(state, "event\n\n")
-
-      {[], state} = Parser.parse("event:")
-      {[], state} = Parser.parse(state, " ")
-      {[%{event: " event"}], %Parser{}} = Parser.parse(state, " event\n\n")
-    end
+    {events, %Parser{}} = Parser.parse("id\ndata: value\n\n")
+    assert events == [%{id: "", data: "value"}]
   end
 
-  describe "data" do
-    test "multiple data lines are concatenated with newlines" do
-      {events, %Parser{}} =
-        Parser.parse("data: line 1\ndata: line 2\ndata: line 3\n\n")
+  test "repeated id, event, and retry keys will overwrite their previous value" do
+    {events, %Parser{}} = Parser.parse("event: foo\nevent: bar\ndata: value\n\n")
+    assert events == [%{event: "bar", data: "value"}]
 
-      assert events == [%{data: "line 1\nline 2\nline 3"}]
-    end
+    {events, %Parser{}} = Parser.parse("id: 1\nid: 2\ndata: value\n\n")
+    assert events == [%{id: "2", data: "value"}]
 
-    test "multiple data lines arriving in incomplete chunks are still concatenated with newlines" do
-      {[], state} = Parser.parse("event: data_")
-      {[], state} = Parser.parse(state, "test\nda")
-      {[], state} = Parser.parse(state, "ta")
-      {[], state} = Parser.parse(state, ": lin")
-      {[], state} = Parser.parse(state, "e 1")
-      {[], state} = Parser.parse(state, "\ndata: ")
-      {[], state} = Parser.parse(state, "line 2")
-      {[], state} = Parser.parse(state, "\ndata: line 3\n")
-      {events, %Parser{}} = Parser.parse(state, "\n")
+    {events, %Parser{}} = Parser.parse("retry: 1000\nretry: 2000\ndata: value\n\n")
+    assert events == [%{retry: 2000, data: "value"}]
+  end
 
-      assert events == [%{event: "data_test", data: "line 1\nline 2\nline 3"}]
-    end
+  test "suppresses events without data" do
+    {events, %Parser{}} = Parser.parse("id: 1\nevent: foo\nretry: 1000\n\n")
+    assert events == []
+
+    {events, %Parser{}} = Parser.parse("id: 1\nevent: foo\nretry: 1000\ndata:\n\n")
+    assert events == [%{id: "1", event: "foo", retry: 1000, data: ""}]
+  end
+
+  test "ignores unrecognized keys" do
+    {[], %Parser{}} = Parser.parse("unknown: value\n\n")
+
+    {[event], %Parser{}} =
+      Parser.parse("event: foo\nunknown: value\ndata: bar\n\n")
+
+    assert event == %{event: "foo", data: "bar"}
+  end
+
+  test "ignores unreognized keys with no value" do
+    {[], %Parser{}} = Parser.parse("unknown\n\n")
+
+    {[event], %Parser{}} =
+      Parser.parse("event: foo\nunknown\nid: 1234\ndata: value\n\n")
+
+    assert event == %{event: "foo", id: "1234", data: "value"}
+  end
+
+  test "a single leading space is ignored" do
+    {[%{id: "id", data: "value"}], %Parser{}} = Parser.parse("id:id\ndata: value\n\n")
+    {[%{id: "id", data: "value"}], %Parser{}} = Parser.parse("id: id\ndata: value\n\n")
+    {[%{id: " id", data: "value"}], %Parser{}} = Parser.parse("id:  id\ndata: value\n\n")
+
+    {[%{event: "event", data: "value"}], %Parser{}} =
+      Parser.parse("event:event\ndata: value\n\n")
+
+    {[%{event: "event", data: "value"}], %Parser{}} =
+      Parser.parse("event: event\ndata: value\n\n")
+
+    {[%{event: " event", data: "value"}], %Parser{}} =
+      Parser.parse("event:  event\ndata: value\n\n")
+
+    {[%{data: "data"}], %Parser{}} = Parser.parse("data:data\n\n")
+    {[%{data: "data"}], %Parser{}} = Parser.parse("data: data\n\n")
+    {[%{data: " data"}], %Parser{}} = Parser.parse("data:  data\n\n")
+
+    {[%{retry: 1000, data: "value"}], %Parser{}} = Parser.parse("retry:1000\ndata: value\n\n")
+    {[%{retry: 1000, data: "value"}], %Parser{}} = Parser.parse("retry: 1000\ndata: value\n\n")
+    # Retry contains space here, which makes in invalid and thus ignored.
+    {[%{data: "value"}], %Parser{}} = Parser.parse("retry:  1000\ndata: value\n\n")
+  end
+
+  test "a single leading space is still ignored when chunked" do
+    {[], state} = Parser.parse("event:")
+    {[], state} = Parser.parse(state, " ")
+
+    {[%{event: "event", data: "value"}], %Parser{}} =
+      Parser.parse(state, "event\ndata: value\n\n")
+
+    {[], state} = Parser.parse("event:")
+    {[], state} = Parser.parse(state, " ")
+
+    {[%{event: " event", data: "value"}], %Parser{}} =
+      Parser.parse(state, " event\ndata: value\n\n")
+  end
+
+  test "retry fields must contain only ASCII digits" do
+    {events, %Parser{}} = Parser.parse("retry: 1000\nretry: 10ms\ndata: value\n\n")
+    assert events == [%{retry: 1000, data: "value"}]
+
+    non_ascii_digit = <<0xD9, 0xA1>>
+
+    {events, %Parser{}} =
+      Parser.parse(
+        "retry:\nretry: -1\nretry: 1.5\nretry: " <> non_ascii_digit <> "\ndata: value\n\n"
+      )
+
+    assert events == [%{data: "value"}]
+  end
+
+  test "id fields containing NULL are ignored" do
+    {events, %Parser{}} = Parser.parse("id: 1\nid: a\0b\ndata: value\n\n")
+    assert events == [%{id: "1", data: "value"}]
+
+    {events, %Parser{}} = Parser.parse("id: a\0b\ndata: value\n\n")
+    assert events == [%{data: "value"}]
+
+    {events, %Parser{}} = Parser.parse("id: \0\ndata: value\n\n")
+    assert events == [%{data: "value"}]
+  end
+
+  test "multiple data lines are concatenated with newlines" do
+    {events, %Parser{}} =
+      Parser.parse("data: line 1\ndata: line 2\ndata: line 3\n\n")
+
+    assert events == [%{data: "line 1\nline 2\nline 3"}]
+  end
+
+  test "multiple data lines arriving in incomplete chunks are still concatenated with newlines" do
+    {[], state} = Parser.parse("event: data_")
+    {[], state} = Parser.parse(state, "test\nda")
+    {[], state} = Parser.parse(state, "ta")
+    {[], state} = Parser.parse(state, ": lin")
+    {[], state} = Parser.parse(state, "e 1")
+    {[], state} = Parser.parse(state, "\ndata: ")
+    {[], state} = Parser.parse(state, "line 2")
+    {[], state} = Parser.parse(state, "\ndata: line 3\n")
+    {events, %Parser{}} = Parser.parse(state, "\n")
+
+    assert events == [%{event: "data_test", data: "line 1\nline 2\nline 3"}]
   end
 
   describe "comments" do

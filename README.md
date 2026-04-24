@@ -53,7 +53,9 @@ IO.inspect(events)
 # [%{event: "message", data: "{\"complete\":true}"}]
 ```
 
-Events are maps with one or more of the following keys: `:id`, `:event`, `:data`, or `:retry`.
+Events are maps that always include `:data`, and may also include `:id`, `:event`, or `:retry`.
+The `:id`, `:event`, and `:data` values are binaries. The `:retry` value is a non-negative
+integer when present.
 
 ### Real world example using Req
 
@@ -113,11 +115,15 @@ ServerSentEvents.parse(response_body)
 
 ## Parser Boundary
 
-This library parses the event stream syntax. It intentionally leaves EventSource semantics to the caller, including:
+This library parses the event stream syntax and applies the field-level parsing rules from the
+specification. In particular, `id` fields containing NULL are ignored, and `retry` fields are
+emitted as integers only when they contain ASCII digits. Events that do not contain a `data`
+field are suppressed.
 
-- Tracking or applying `lastEventId`.
-- Validating, converting, or applying `retry`.
-- Suppressing events that do not contain a `data` field.
+It intentionally leaves EventSource state and connection behavior to the caller, including:
+
+- Tracking, resetting, or applying `lastEventId`.
+- Applying retry delays.
 - Supplying a default event type such as `"message"`.
 - Opening HTTP connections, reconnecting, or interpreting response headers.
 
