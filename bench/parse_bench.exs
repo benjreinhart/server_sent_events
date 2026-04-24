@@ -113,7 +113,7 @@ defmodule ServerSentEvents.Bench do
 
   defp parse_complete!(input) do
     case Parser.parse(input.complete_payload) do
-      {%Parser{event: nil, key: nil, value: nil}, events} ->
+      {events, %Parser{event: nil, key: nil, value: nil}} ->
         if length(events) == input.complete_event_count do
           events
         else
@@ -123,7 +123,7 @@ defmodule ServerSentEvents.Bench do
           """
         end
 
-      {state, events} ->
+      {events, state} ->
         raise """
         unexpected parser state for complete payload:
         state=#{inspect(state)}
@@ -133,17 +133,16 @@ defmodule ServerSentEvents.Bench do
   end
 
   defp parse_incomplete!(input) do
-    case Parser.parse(input.incomplete_payload) do
-      {state, events} ->
-        if length(events) == input.incomplete_complete_event_count and incomplete?(state) do
-          {events, state}
-        else
-          raise """
-          unexpected result for incomplete payload:
-          events=#{length(events)} expected=#{input.incomplete_complete_event_count}
-          state=#{inspect(state)}
-          """
-        end
+    {events, state} = Parser.parse(input.incomplete_payload)
+
+    if length(events) == input.incomplete_complete_event_count and incomplete?(state) do
+      {events, state}
+    else
+      raise """
+      unexpected result for incomplete payload:
+      events=#{length(events)} expected=#{input.incomplete_complete_event_count}
+      state=#{inspect(state)}
+      """
     end
   end
 
