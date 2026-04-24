@@ -6,7 +6,7 @@
 
 Lightweight, fast Server-Sent Events parser for Elixir.
 
-`ServerSentEvents` is a low-level parser for the SSE event stream format. It turns stream bytes into parsed event maps and keeps enough parser state to resume across arbitrary chunk boundaries.
+`ServerSentEvents` turns an enumerable of SSE response body chunks into a stream of parsed event maps. The low-level chunk parser is available as `ServerSentEvents.Parser` when you need to manage parser state directly.
 
 ## Installation
 
@@ -22,49 +22,35 @@ end
 
 ## Usage
 
-Parse a complete event stream chunk with `parse/1`:
+Parse an enumerable of binary chunks with `ServerSentEvents.parse/1`:
 
 ```elixir
-{state, events} =
-  ServerSentEvents.parse("event: message\ndata: {\"complete\":true}\n\n")
+events =
+  [
+    "event: message\n",
+    "data: {\"complete\":true}\n\n"
+  ]
+  |> ServerSentEvents.parse()
+  |> Enum.to_list()
 
 IO.inspect(events)
 # [%{event: "message", data: "{\"complete\":true}"}]
 ```
 
-The returned `state` should be passed to `parse/2` with the next chunk from the same stream:
+The parser keeps state across arbitrary chunk boundaries:
 
 ```elixir
-{state, []} =
-  ServerSentEvents.parse("event: message\ndata: {\"complete\":")
-
-{state, events} =
-  ServerSentEvents.parse(state, "true}\n\n")
+events =
+  [
+    "event: mes",
+    "sage\ndata: {\"complete\":",
+    "true}\n\n"
+  ]
+  |> ServerSentEvents.parse()
+  |> Enum.to_list()
 
 IO.inspect(events)
 # [%{event: "message", data: "{\"complete\":true}"}]
-```
-
-A chunk may contain zero events, one event, many events, or the beginning of an event that completes in a later chunk.
-
-```elixir
-{state, events} =
-  ServerSentEvents.parse("""
-  event: first
-  data: one
-
-  event: second
-  data: two
-
-  """)
-
-IO.inspect(events)
-# [%{event: "first", data: "one"}]
-
-{_state, events} = ServerSentEvents.parse(state, "\n")
-
-IO.inspect(events)
-# [%{event: "second", data: "two"}]
 ```
 
 Events are maps with one or more of the following keys: `:id`, `:event`, `:data`, or `:retry`.
@@ -81,53 +67,26 @@ This library parses the event stream syntax. It intentionally leaves EventSource
 
 This parser also assumes the input stream is UTF-8. It does not validate UTF-8, reject malformed input, or perform replacement-character decoding.
 
-## Real-World Example
+## Req Example
 
-AI providers such as Anthropic and OpenAI stream generated messages using Server-Sent Events. The parser can be used inside a streaming HTTP response handler by storing the parser state between chunks:
-
-```elixir
-Req.post("https://api.anthropic.com/v1/messages",
-  json: request,
-  into: fn {:data, data}, {req, res} ->
-    {state, events} =
-      case Request.get_private(req, :sse_state) do
-        nil -> ServerSentEvents.parse(data)
-        state -> ServerSentEvents.parse(state, data)
-      end
-
-    req = Request.put_private(req, :sse_state, state)
-
-    if events != [] do
-      send(pid, {:events, events})
-    end
-
-    {:cont, {req, res}}
-  end,
-  headers: %{
-    "x-api-key" => api_key(),
-    "anthropic-version" => "2023-06-01"
-  }
-)
-```
-
-Parsed events are returned as maps:
+Req can expose the response body as an enumerable with `into: :self`. That body can be passed through `ServerSentEvents.parse/1`:
 
 ```elixir
-{_state, events} =
-  ServerSentEvents.parse("""
-  event: content_block_delta
-  data: {"type":"content_block_delta","index":0}
+%Req.Response{status: 200, body: response_body} =
+  Req.post!("https://api.anthropic.com/v1/messages",
+    json: request,
+    into: :self,
+    headers: %{
+      "x-api-key" => api_key(),
+      "anthropic-version" => "2023-06-01"
+    }
+  )
 
-  event: ping
-  data: {"type":"ping"}
-
-  """)
-
-IO.inspect(events)
-# [
-#   %{event: "content_block_delta", data: "{\"type\":\"content_block_delta\",\"index\":0}"},
-#   %{event: "ping", data: "{\"type\":\"ping\"}"}
-# ]
+response_body
+|> ServerSentEvents.parse()
+|> Enum.each(fn event ->
+  # Do something with event
+end)
 ```
 
 Callers typically filter event types and JSON-decode the `data` field after parsing.
