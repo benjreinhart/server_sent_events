@@ -18,7 +18,7 @@ defmodule ServerSentEvents.Parser do
   end
 
   defp parse(<<>>, phase, key, value, event, events) do
-    {%__MODULE__{phase: phase, key: key, value: value, event: event}, Enum.reverse(events)}
+    {Enum.reverse(events), %__MODULE__{phase: phase, key: key, value: value, event: event}}
   end
 
   # Event separator
@@ -30,8 +30,8 @@ defmodule ServerSentEvents.Parser do
       <<>> when byte == ?\r ->
         # Eagerly finalize the event if the stream ends with a CR. However, carry over
         # state about the CR so that if the next chunk starts with a LF, we know to skip it.
-        events = events |> finalize(event) |> Enum.reverse()
-        {%__MODULE__{phase: :cr, event: nil, key: nil, value: nil}, events}
+        events = finalize(events, event)
+        {Enum.reverse(events), %__MODULE__{phase: :cr, event: nil, key: nil, value: nil}}
 
       rest ->
         parse(rest, :field, nil, nil, nil, finalize(events, event))
@@ -124,7 +124,7 @@ defmodule ServerSentEvents.Parser do
         parse(rest, :field, nil, nil, event, events)
 
       <<>> when byte == ?\r ->
-        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+        {Enum.reverse(events), %__MODULE__{phase: :cr, event: event, key: nil, value: nil}}
 
       rest ->
         parse(rest, :field, nil, nil, event, events)
@@ -144,7 +144,7 @@ defmodule ServerSentEvents.Parser do
         is_binary(key) -> key <> part
       end
 
-    {%__MODULE__{phase: :key, key: buffer, value: nil, event: event}, Enum.reverse(events)}
+    {Enum.reverse(events), %__MODULE__{phase: :key, key: buffer, value: nil, event: event}}
   end
 
   defp do_value(<<byte, rest::binary>>, input, len, key, value, event, events)
@@ -156,7 +156,7 @@ defmodule ServerSentEvents.Parser do
         parse(rest, :field, nil, nil, event, events)
 
       <<>> when byte == ?\r ->
-        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+        {Enum.reverse(events), %__MODULE__{phase: :cr, event: event, key: nil, value: nil}}
 
       rest ->
         parse(rest, :field, nil, nil, event, events)
@@ -169,7 +169,7 @@ defmodule ServerSentEvents.Parser do
 
   defp do_value(<<>>, input, len, key, value, event, events) do
     value = to_value(input, len, value)
-    {%__MODULE__{phase: :value, key: key, value: value, event: event}, Enum.reverse(events)}
+    {Enum.reverse(events), %__MODULE__{phase: :value, key: key, value: value, event: event}}
   end
 
   defp skip_line(<<byte, rest::binary>>, event, events) when byte in ~c'\n\r' do
@@ -178,7 +178,7 @@ defmodule ServerSentEvents.Parser do
         parse(rest, :field, nil, nil, event, events)
 
       <<>> when byte == ?\r ->
-        {%__MODULE__{phase: :cr, event: event, key: nil, value: nil}, Enum.reverse(events)}
+        {Enum.reverse(events), %__MODULE__{phase: :cr, event: event, key: nil, value: nil}}
 
       rest ->
         parse(rest, :field, nil, nil, event, events)
@@ -190,7 +190,7 @@ defmodule ServerSentEvents.Parser do
   end
 
   defp skip_line(<<>>, event, events) do
-    {%__MODULE__{phase: :skip_line, key: nil, value: nil, event: event}, Enum.reverse(events)}
+    {Enum.reverse(events), %__MODULE__{phase: :skip_line, key: nil, value: nil, event: event}}
   end
 
   defp copy_binary_part(input, start, len) do

@@ -4,11 +4,11 @@ defmodule ServerSentEvents do
   specification](https://html.spec.whatwg.org/multipage/server-sent-events.html) for
   details on parsing and interpreting the event stream.
 
-  Note this library is focused on parsing the event stream itself, and does not provide
+  This library is focused on parsing the event stream itself, and does not provide
   behavior regarding the interpretation of the event data or the management of the underlying
   HTTP connection. For example, the `retry` field is parsed and included in the emitted event
   maps, but it is up to the caller to decide how to interpret it (e.g. as an integer) and what
-  to do with it. The same goes for the `id` field and the `Last-Event-ID` behavior.
+  to do with it. The same goes for the `id` field and the `Last-Event-ID` behavior, etc.
   """
 
   alias ServerSentEvents.Parser
@@ -29,8 +29,7 @@ defmodule ServerSentEvents do
   @spec parse(Enumerable.t()) :: Enumerable.t(event())
   def parse(stream) do
     Stream.transform(stream, %Parser{phase: :start}, fn chunk, state ->
-      {state, events} = Parser.parse(state, chunk)
-      {events, state}
+      Parser.parse(state, chunk)
     end)
   end
 end
