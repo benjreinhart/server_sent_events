@@ -75,10 +75,7 @@ From there, callers typically filter event types and JSON-decode the `data` fiel
     }
   )
 
-events = ["content_block_start", "content_block_delta", "content_block_stop", "message_delta"]
-
 ServerSentEvents.parse(response_body)
-|> Stream.filter(fn %{event: event} -> event in events end)
 |> Stream.map(fn %{data: data} -> JSON.decode!(data) end)
 |> Enum.each(&IO.inspect/1)
 
