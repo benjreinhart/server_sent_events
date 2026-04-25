@@ -2,7 +2,8 @@
 
 [![CI](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml/badge.svg)](https://github.com/benjreinhart/server_sent_events/actions/workflows/ci.yml)
 [![License](https://img.shields.io/hexpm/l/server_sent_events.svg)](https://github.com/benjreinhart/server_sent_events/blob/main/LICENSE.md)
-[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hexdocs.pm/server_sent_events/readme.html)
+[![Version](https://img.shields.io/hexpm/v/server_sent_events.svg)](https://hex.pm/packages/server_sent_events)
+[![Docs](https://img.shields.io/badge/api-docs-green.svg?style=flat)](https://hexdocs.pm/server_sent_events/readme.html)
 
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
@@ -136,7 +137,3 @@ mix bench
 ```
 
 The benchmark exercises both large complete payloads and large payloads that end with an incomplete trailing event, and reports execution time and memory usage.
-
-## License
-
-[MIT](LICENSE.md)
