@@ -1,7 +1,7 @@
 defmodule ServerSentEvents.MixProject do
   use Mix.Project
 
-  @version "1.0.0-rc.1"
+  @version "1.0.0-rc.2"
 
   @github_repo_url "https://github.com/benjreinhart/server_sent_events"
 
