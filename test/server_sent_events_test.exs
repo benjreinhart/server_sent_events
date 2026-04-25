@@ -1,6 +1,8 @@
 defmodule ServerSentEventsTest do
   use ExUnit.Case, async: true
 
+  doctest ServerSentEvents
+
   test "parses an enumerable of chunks into events" do
     chunks = [
       "event: first\n",

@@ -28,6 +28,20 @@ defmodule ServerSentEvents do
 
   Each emitted item is one parsed event map. Parser state is retained between
   chunks, so callers can pass arbitrary response body chunks directly.
+
+  ## Examples
+
+      iex> events =
+      ...>   [
+      ...>     "id: 1\\n",
+      ...>     "event: message\\n",
+      ...>     "retry: 5000\\n",
+      ...>     "data: hello\\n\\n"
+      ...>   ]
+      ...>   |> ServerSentEvents.parse()
+      ...>   |> Enum.to_list()
+      iex> events == [%{id: "1", event: "message", retry: 5000, data: "hello"}]
+      true
   """
   @spec parse(Enumerable.t()) :: Enumerable.t(event())
   def parse(stream) do
