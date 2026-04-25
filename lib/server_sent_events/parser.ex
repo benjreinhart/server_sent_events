@@ -1,4 +1,6 @@
 defmodule ServerSentEvents.Parser do
+  @moduledoc false
+
   @type event :: %{
           required(:data) => binary(),
           optional(:event) => binary(),
