@@ -73,6 +73,40 @@ defmodule ServerSentEvents.ParserTest do
     assert event == %{event: "bom", data: <<0xFEFF::utf8, "post bom">>}
   end
 
+  test "preserves multi-byte UTF-8 characters in field values" do
+    id = "事件-☃"
+    event = "résumé"
+    data = "café こんにちは 👋"
+
+    {events, %Parser{}} = Parser.parse("id: #{id}\nevent: #{event}\ndata: #{data}\n\n")
+
+    assert events == [%{id: id, event: event, data: data}]
+  end
+
+  test "preserves multi-byte UTF-8 characters split across chunks" do
+    <<b1, b2, b3, b4>> = "👋"
+
+    first_half = <<b1, b2>>
+    second_half = <<b3, b4>>
+
+    {[], state} = Parser.parse("event: hello\ndata")
+    {[], state} = Parser.parse(state, ": " <> first_half)
+    {[event], %Parser{}} = Parser.parse(state, second_half <> "\n\n")
+
+    assert event == %{event: "hello", data: "👋"}
+  end
+
+  test "preserves a grapheme split across chunks" do
+    grapheme = "e" <> <<0xCC, 0x81>>
+    assert String.length(grapheme) == 1
+
+    {[], state} = Parser.parse("event: coffee\ndata")
+    {[], state} = Parser.parse(state, ": cafe" <> <<0xCC>>)
+    {[event], %Parser{}} = Parser.parse(state, <<0x81, "\n\n">>)
+
+    assert event == %{event: "coffee", data: "café"}
+  end
+
   test "supports incomplete keys and values" do
     {[], state} = Parser.parse("i")
     {[], state} = Parser.parse(state, "d")
