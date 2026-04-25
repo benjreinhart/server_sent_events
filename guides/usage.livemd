@@ -3,7 +3,7 @@
 ```elixir
 Mix.install([
   {:req, "~> 0.5.17"},
-  {:server_sent_events, "1.0.0-rc.1"}
+  {:server_sent_events, "1.0.0"}
 ])
 ```
 
