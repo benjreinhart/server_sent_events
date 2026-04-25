@@ -6,86 +6,7 @@
 
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
-This module fully conforms to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events_test.exs).
-
-## Usage
-
-```elixir
-{events, buffer} = ServerSentEvents.parse("event: event\ndata: {\"complete\":true}\n\n")
-IO.inspect(events)   # [%{event: "event", data: "{\"complete\":true}\n"}]
-IO.inspect(buffer)   # ""
-```
-
-Parsing a chunk containing zero or more events followed by an incomplete event returns the incomplete data.
-
-```elixir
-{events, buffer} = ServerSentEvents.parse("event: event\ndata: {\"complete\":")
-IO.inspect(events)   # []
-IO.inspect(buffer)   # "event: event\ndata: {\"complete\":"
-
-{events, buffer} = ServerSentEvents.parse(buffer <> "true}\n\nevent: event\ndata: {")
-IO.inspect(events)   # [%{event: "event", data: "{\"complete\":true}\n"}]
-IO.inspect(buffer)   # "event: event\ndata: {"
-
-{events, rest} = ServerSentEvents.parse(buffer <> "\"key\":\"value\"}\n\n")
-IO.inspect(events)   # [%{event: "event", data: "{\"key\":\"value\"}\n"}]
-IO.inspect(rest)     # ""
-```
-
-This can be useful for streaming environments where a single event may not reliably arrive in one chunk.
-
-## Real world example
-
-AI providers like OpenAI and Anthropic stream AI generated messages using Server Sent Events.
-This module can handle parsing the server sent events, returning a list of maps. For example,
-we can parse a streaming response from Anthropic:
-
-```elixir
-Req.post("https://api.anthropic.com/v1/messages",
-  json: request,
-  into: fn {:data, data}, {req, res} ->
-    buffer = Request.get_private(req, :sse_buffer, "")
-    {events, buffer} = ServerSentEvents.parse(buffer <> data)
-    Request.put_private(req, :sse_buffer, buffer)
-
-    if events != [] do
-      # Do something with events, e.g., send to a process consuming them.
-      send(pid, {:events, events})
-    end
-
-    {:cont, {req, res}}
-  end,
-  headers: %{
-    "x-api-key" => api_key(),
-    "anthropic-version" => "2023-06-01"
-  }
-)
-```
-
-The first chunk from Anthropic tends to contain a couple of messages that look something like the following when parsed by this module:
-
-```elixir
-# Parsing first chunk from Anthropic
-{events, ""} = ServerSentEvents.parse(chunk)
-IO.inspect(events)
-# [
-#   %{
-#     data: "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_01LAFhYgKvtBB5ac5n41oyDn\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-5-sonnet-20241022\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":12,\"output_tokens\":2}}        }",
-#     event: "message_start"
-#   },
-#   %{
-#     data: "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}         }",
-#     event: "content_block_start"
-#   },
-#   %{data: "{\"type\": \"ping\"}", event: "ping"},
-#   %{
-#     data: "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Here's\"}          }",
-#     event: "content_block_delta"
-#   }
-# ]
-```
-
-This is typically followed by filtering out unwanted events and JSON parsing the `data` field of meaningful events.
+This module parses according to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events/parser_test.exs). See [Behavior Boundary](#behavior-boundary) for more info.
 
 ## Installation
 
@@ -94,10 +15,117 @@ The package can be installed by adding `server_sent_events` to your list of depe
 ```elixir
 def deps do
   [
-    {:server_sent_events, "~> 0.2.0"}
+    {:server_sent_events, "~> 1.0.0"}
   ]
 end
 ```
+
+## Usage
+
+Decode an enumerable of binary chunks with `ServerSentEvents.decode_stream/1`:
+
+```elixir
+events =
+  [
+    "event: message\n",
+    "data: {\"complete\":true}\n\n"
+  ]
+  |> ServerSentEvents.decode_stream()
+  |> Enum.to_list()
+
+IO.inspect(events)
+# [%{event: "message", data: "{\"complete\":true}"}]
+```
+
+The decoder keeps state across arbitrary chunk boundaries:
+
+```elixir
+events =
+  [
+    "event: mes",
+    "sage\ndata: {\"complete\":",
+    "true}\n\n"
+  ]
+  |> ServerSentEvents.decode_stream()
+  |> Enum.to_list()
+
+IO.inspect(events)
+# [%{event: "message", data: "{\"complete\":true}"}]
+```
+
+Events are maps that always include `:data`, and may also include `:id`, `:event`, or `:retry`.
+The `:id`, `:event`, and `:data` values are binaries. The `:retry` value is a non-negative
+integer when present.
+
+### Real world example using Req
+
+Req can expose the response body as an enumerable with `into: :self`. That body can be passed through `ServerSentEvents.decode_stream/1`:
+
+From there, callers typically filter event types and JSON-decode the `data` field.
+
+```elixir
+%Req.Response{status: 200, body: response_body} =
+  Req.post!("https://api.anthropic.com/v1/messages",
+    json: request,
+    into: :self,
+    headers: %{
+      "x-api-key" => api_key(),
+      "anthropic-version" => "2023-06-01",
+      "anthropic-beta" => "adaptive-thinking-2026-01-28,effort-2025-11-24,max-effort-2026-01-24"
+    }
+  )
+
+response_body
+|> ServerSentEvents.decode_stream()
+|> Stream.map(fn %{data: data} -> JSON.decode!(data) end)
+|> Enum.each(&IO.inspect/1)
+
+#  %{
+#    "content_block" => %{"type" => "thinking", "signature" => "", "thinking" => ""},
+#    "index" => 0,
+#    "type" => "content_block_start"
+#  }
+#  %{
+#    "delta" => %{"type" => "thinking_delta", "thinking" => "Now"},
+#    "index" => 0,
+#    "type" => "content_block_delta"
+#  }
+#  %{
+#    "delta" => %{"type" => "thinking_delta", "thinking" => " I have a good understanding of the project. Let "},
+#    "index" => 0,
+#    "type" => "content_block_delta"
+#  }
+#
+#  # etc...
+#
+#  %{"index" => 11, "type" => "content_block_stop"}
+#  %{
+#    "delta" => %{"stop_details" => nil, "stop_reason" => "tool_use", "stop_sequence" => nil},
+#    "type" => "message_delta",
+#    "usage" => %{
+#      "cache_creation_input_tokens" => 2810,
+#      "cache_read_input_tokens" => 14451,
+#      "input_tokens" => 6,
+#      "output_tokens" => 10528
+#    }
+#  }
+```
+
+## Behavior Boundary
+
+This library decodes the event stream syntax and applies the field-level parsing rules from the
+specification. In particular, `id` fields containing NULL are ignored, and `retry` fields are
+emitted as integers only when they contain ASCII digits. Events that do not contain a `data`
+field are suppressed.
+
+It intentionally leaves EventSource state and connection behavior to the caller, including:
+
+- Tracking, resetting, or applying `lastEventId`.
+- Applying retry delays.
+- Supplying a default event type such as `"message"`.
+- Opening HTTP connections, reconnecting, or interpreting response headers.
+
+This decoder also assumes the input stream is UTF-8. It does not validate UTF-8, reject malformed input, or perform replacement-character decoding.
 
 ## Benchmarking
 
@@ -108,3 +136,7 @@ mix bench
 ```
 
 The benchmark exercises both large complete payloads and large payloads that end with an incomplete trailing event, and reports execution time and memory usage.
+
+## License
+
+[MIT](LICENSE.md)

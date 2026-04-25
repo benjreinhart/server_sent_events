@@ -1,4 +1,6 @@
 defmodule ServerSentEvents.Bench do
+  alias ServerSentEvents.Parser
+
   @target_sizes [
     {"1 MB", 1_048_576},
     {"4 MB", 4_194_304}
@@ -110,38 +112,45 @@ defmodule ServerSentEvents.Bench do
   end
 
   defp parse_complete!(input) do
-    case ServerSentEvents.parse(input.complete_payload) do
-      {events, rest} ->
-        if rest == "" and length(events) == input.complete_event_count do
+    case Parser.parse(input.complete_payload) do
+      {events, %Parser{event: nil, key: nil, value: nil}} ->
+        if length(events) == input.complete_event_count do
           events
         else
           raise """
           unexpected result for complete payload:
           events=#{length(events)} expected=#{input.complete_event_count}
-          rest_bytes=#{byte_size(rest)}
           """
         end
+
+      {events, state} ->
+        raise """
+        unexpected parser state for complete payload:
+        state=#{inspect(state)}
+        events=#{length(events)} expected=#{input.complete_event_count}
+        """
     end
   end
 
   defp parse_incomplete!(input) do
-    case ServerSentEvents.parse(input.incomplete_payload) do
-      {events, rest} ->
-        if length(events) == input.incomplete_complete_event_count and
-             byte_size(rest) == input.incomplete_rest_bytes do
-          {events, rest}
-        else
-          raise """
-          unexpected result for incomplete payload:
-          events=#{length(events)} expected=#{input.incomplete_complete_event_count}
-          rest_bytes=#{byte_size(rest)} expected_rest_bytes=#{input.incomplete_rest_bytes}
-          """
-        end
+    {events, state} = Parser.parse(input.incomplete_payload)
+
+    if length(events) == input.incomplete_complete_event_count and incomplete?(state) do
+      {events, state}
+    else
+      raise """
+      unexpected result for incomplete payload:
+      events=#{length(events)} expected=#{input.incomplete_complete_event_count}
+      state=#{inspect(state)}
+      """
     end
   end
 
+  defp incomplete?(%Parser{event: nil, key: nil, value: nil}), do: false
+  defp incomplete?(%Parser{}), do: true
+
   defp print_inputs(inputs) do
-    IO.puts("Benchmarking ServerSentEvents.parse/1")
+    IO.puts("Benchmarking ServerSentEvents.Parser.parse/1")
 
     Enum.each(inputs, fn {label, input} ->
       IO.puts([
