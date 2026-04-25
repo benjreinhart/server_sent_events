@@ -1,0 +1,63 @@
+# ServerSentEvents Req Example
+
+```elixir
+Mix.install([
+  {:req, "~> 0.5.17"},
+  {:server_sent_events, "1.0.0-rc.1"}
+])
+```
+
+## Req+Claude+SSE stream
+
+To run this livebook, you must have a valid `ANTHROPIC_API_KEY` environment variable enabled for this livebook.
+
+```elixir
+defmodule Claude do
+  def stream_messages!(request) do
+    %Req.Response{status: 200, body: response_body} =
+      Req.post!("https://api.anthropic.com/v1/messages",
+        json: Map.put(request, :stream, true),
+        into: :self,
+        headers: %{
+          "x-api-key" => api_key(),
+          "anthropic-version" => "2023-06-01"
+        }
+      )
+
+    response_body
+    |> ServerSentEvents.decode_stream()
+    |> Stream.map(fn event -> JSON.decode!(event.data) end)
+  end
+
+  defp api_key do
+    System.get_env("LB_ANTHROPIC_API_KEY")
+  end
+end
+```
+
+In the above module, you'll notice that we JSON.decode! all events in the stream. As a slight optimization, you may choose to instead parse a subset. For example, the code below only cares about the `content_block_delta` event. If only that event is desired, you could filter on events with that type before JSON decoding, reducing the amount of JSON.decode calls.
+
+```elixir
+stream =
+  Claude.stream_messages!(%{
+    model: "claude-haiku-4-5",
+    max_tokens: 8192,
+    system: """
+    You are a poet, fluent in multiple languages and emoji usage.
+    """,
+    messages: [
+      %{
+        role: :user,
+        content: "Write a poem across multiple languages and emojis!"
+      }
+    ]
+  })
+
+Enum.each(stream, fn event ->
+  with %{"type" => "content_block_delta", "delta" => %{"text" => text}} <- event do
+    IO.write(text)
+  end
+end)
+```
+
+<!-- livebook:{"offset":1716,"stamp":{"token":"XCP._kODVs_NAxGi8s7nqKoObAN1PsFWeGyWFeWCUYHQBOgl4HOdRuDdNHBVcQpSo_LkybST52OE_bX4-pveaGKbNYcL0sAg-mn62PffPa2HgGwGIzQak6YozFadFy8","version":2}} -->

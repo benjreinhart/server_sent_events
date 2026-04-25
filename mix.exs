@@ -1,7 +1,7 @@
 defmodule ServerSentEvents.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "1.0.0-rc.1"
 
   @github_repo_url "https://github.com/benjreinhart/server_sent_events"
 
@@ -70,8 +70,10 @@ defmodule ServerSentEvents.MixProject do
       source_ref: "v#{@version}",
       extras: [
         "README.md",
-        "CHANGELOG.md"
-      ]
+        "CHANGELOG.md",
+        "guides/usage.livemd"
+      ],
+      groups_for_extras: [Guides: ~r/^guides/]
     ]
   end
 end
