@@ -3,7 +3,7 @@ defmodule ServerSentEventsTest do
 
   doctest ServerSentEvents
 
-  test "parses an enumerable of chunks into events" do
+  test "decodes an enumerable of chunks into events" do
     chunks = [
       "event: first\n",
       "data: one\n\n",
@@ -11,7 +11,7 @@ defmodule ServerSentEventsTest do
       "data: two\n\n"
     ]
 
-    events = chunks |> ServerSentEvents.parse() |> Enum.to_list()
+    events = chunks |> ServerSentEvents.decode_stream() |> Enum.to_list()
 
     assert events == [
              %{event: "first", data: "one"},
@@ -19,7 +19,7 @@ defmodule ServerSentEventsTest do
            ]
   end
 
-  test "preserves parser state across chunk boundaries" do
+  test "preserves decoder state across chunk boundaries" do
     chunks = [
       "event: fir",
       "st\ndata: o",
@@ -27,7 +27,7 @@ defmodule ServerSentEventsTest do
       " two\n\n"
     ]
 
-    events = chunks |> ServerSentEvents.parse() |> Enum.to_list()
+    events = chunks |> ServerSentEvents.decode_stream() |> Enum.to_list()
 
     assert events == [
              %{event: "first", data: "one"},
@@ -41,7 +41,7 @@ defmodule ServerSentEventsTest do
       "event: incomplete\ndata: two"
     ]
 
-    events = chunks |> ServerSentEvents.parse() |> Enum.to_list()
+    events = chunks |> ServerSentEvents.decode_stream() |> Enum.to_list()
 
     assert events == [%{event: "complete", data: "one"}]
   end

@@ -6,7 +6,7 @@
 
 Lightweight, ultra-fast Server Sent Event parser for Elixir.
 
-This module parses according to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events/parser_test.exs). See [Parser Boundary](#parser-boundary) for more info.
+This module parses according to the official [Server Sent Events specification](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) with a comprehensive [test suite](https://github.com/benjreinhart/server_sent_events/blob/main/test/server_sent_events/parser_test.exs). See [Behavior Boundary](#behavior-boundary) for more info.
 
 ## Installation
 
@@ -22,7 +22,7 @@ end
 
 ## Usage
 
-Parse an enumerable of binary chunks with `ServerSentEvents.parse/1`:
+Decode an enumerable of binary chunks with `ServerSentEvents.decode_stream/1`:
 
 ```elixir
 events =
@@ -30,14 +30,14 @@ events =
     "event: message\n",
     "data: {\"complete\":true}\n\n"
   ]
-  |> ServerSentEvents.parse()
+  |> ServerSentEvents.decode_stream()
   |> Enum.to_list()
 
 IO.inspect(events)
 # [%{event: "message", data: "{\"complete\":true}"}]
 ```
 
-The parser keeps state across arbitrary chunk boundaries:
+The decoder keeps state across arbitrary chunk boundaries:
 
 ```elixir
 events =
@@ -46,7 +46,7 @@ events =
     "sage\ndata: {\"complete\":",
     "true}\n\n"
   ]
-  |> ServerSentEvents.parse()
+  |> ServerSentEvents.decode_stream()
   |> Enum.to_list()
 
 IO.inspect(events)
@@ -59,7 +59,7 @@ integer when present.
 
 ### Real world example using Req
 
-Req can expose the response body as an enumerable with `into: :self`. That body can be passed through `ServerSentEvents.parse/1`:
+Req can expose the response body as an enumerable with `into: :self`. That body can be passed through `ServerSentEvents.decode_stream/1`:
 
 From there, callers typically filter event types and JSON-decode the `data` field.
 
@@ -75,7 +75,8 @@ From there, callers typically filter event types and JSON-decode the `data` fiel
     }
   )
 
-ServerSentEvents.parse(response_body)
+response_body
+|> ServerSentEvents.decode_stream()
 |> Stream.map(fn %{data: data} -> JSON.decode!(data) end)
 |> Enum.each(&IO.inspect/1)
 
@@ -110,9 +111,9 @@ ServerSentEvents.parse(response_body)
 #  }
 ```
 
-## Parser Boundary
+## Behavior Boundary
 
-This library parses the event stream syntax and applies the field-level parsing rules from the
+This library decodes the event stream syntax and applies the field-level parsing rules from the
 specification. In particular, `id` fields containing NULL are ignored, and `retry` fields are
 emitted as integers only when they contain ASCII digits. Events that do not contain a `data`
 field are suppressed.
@@ -124,7 +125,7 @@ It intentionally leaves EventSource state and connection behavior to the caller,
 - Supplying a default event type such as `"message"`.
 - Opening HTTP connections, reconnecting, or interpreting response headers.
 
-This parser also assumes the input stream is UTF-8. It does not validate UTF-8, reject malformed input, or perform replacement-character decoding.
+This decoder also assumes the input stream is UTF-8. It does not validate UTF-8, reject malformed input, or perform replacement-character decoding.
 
 ## Benchmarking
 
