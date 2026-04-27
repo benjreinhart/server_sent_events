@@ -69,18 +69,13 @@ From there, callers typically filter event types and JSON-decode the `data` fiel
   Req.post!("https://api.anthropic.com/v1/messages",
     json: request,
     into: :self,
-    headers: %{
-      "x-api-key" => api_key(),
-      "anthropic-version" => "2023-06-01",
-      "anthropic-beta" => "adaptive-thinking-2026-01-28,effort-2025-11-24,max-effort-2026-01-24"
-    }
+    headers: %{"x-api-key" => api_key(), "anthropic-version" => "2023-06-01"}
   )
 
 response_body
 |> ServerSentEvents.decode_stream()
 |> Stream.map(fn %{data: data} -> JSON.decode!(data) end)
 |> Enum.each(&IO.inspect/1)
-
 #  %{
 #    "content_block" => %{"type" => "thinking", "signature" => "", "thinking" => ""},
 #    "index" => 0,
@@ -91,25 +86,8 @@ response_body
 #    "index" => 0,
 #    "type" => "content_block_delta"
 #  }
-#  %{
-#    "delta" => %{"type" => "thinking_delta", "thinking" => " I have a good understanding of the project. Let "},
-#    "index" => 0,
-#    "type" => "content_block_delta"
-#  }
 #
-#  # etc...
-#
-#  %{"index" => 11, "type" => "content_block_stop"}
-#  %{
-#    "delta" => %{"stop_details" => nil, "stop_reason" => "tool_use", "stop_sequence" => nil},
-#    "type" => "message_delta",
-#    "usage" => %{
-#      "cache_creation_input_tokens" => 2810,
-#      "cache_read_input_tokens" => 14451,
-#      "input_tokens" => 6,
-#      "output_tokens" => 10528
-#    }
-#  }
+#  etc...
 ```
 
 ## Behavior Boundary
