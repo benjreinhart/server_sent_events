@@ -45,7 +45,7 @@ defmodule ServerSentEvents do
   """
   @spec decode_stream(Enumerable.t()) :: Enumerable.t(event())
   def decode_stream(stream) do
-    Stream.transform(stream, %Parser{phase: :start}, fn chunk, state ->
+    Stream.transform(stream, Parser.init(), fn chunk, state ->
       Parser.parse(state, chunk)
     end)
   end
