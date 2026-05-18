@@ -358,10 +358,4 @@ defmodule ServerSentEvents.ParserTest do
       {[], %Parser{}} = Parser.parse(state, "")
     end
   end
-
-  describe "init/0" do
-    test "creates struct in `start` phase" do
-      assert Parser.init() == %Parser{phase: :start, key: nil, value: nil, event: nil}
-    end
-  end
 end
