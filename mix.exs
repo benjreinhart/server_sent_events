@@ -53,6 +53,7 @@ defmodule ServerSentEvents.MixProject do
   defp deps do
     [
       {:benchee, "~> 1.3", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: :dev, runtime: false},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false}
     ]
   end
