@@ -5,7 +5,7 @@ defmodule ServerSentEvents.Parser do
   See [Usage Guide](guides/usage.livemd) for usage example.
   """
 
-  @type state :: %__MODULE__{
+  @type t :: %__MODULE__{
           phase: :start | :field | :key | :value_start | :value | :skip_line | :cr,
           key: nil | binary() | :event | :data | :id | :retry,
           value: nil | binary() | [binary()],
@@ -29,7 +29,7 @@ defmodule ServerSentEvents.Parser do
       iex> ServerSentEvents.Parser.new()
       %ServerSentEvents.Parser{phase: :start, key: nil, value: nil, event: nil}
   """
-  @spec new() :: state()
+  @spec new() :: t()
   def new() do
     %__MODULE__{phase: :start}
   end
@@ -43,7 +43,7 @@ defmodule ServerSentEvents.Parser do
       {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
       %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
   """
-  @spec parse(input :: binary()) :: {[event()], state()}
+  @spec parse(input :: binary()) :: {[event()], t()}
   def parse(input) when is_binary(input) do
     new() |> parse(input)
   end
@@ -68,7 +68,7 @@ defmodule ServerSentEvents.Parser do
       {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
       %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
   """
-  @spec parse(state(), input :: binary()) :: {[event()], state()}
+  @spec parse(t(), input :: binary()) :: {[event()], t()}
   def parse(%__MODULE__{phase: phase, key: key, value: value, event: event}, input)
       when is_binary(input) do
     parse(input, phase, key, value, event, [])
