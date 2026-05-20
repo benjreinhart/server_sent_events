@@ -1,5 +1,9 @@
 defmodule ServerSentEvents.Parser do
-  @moduledoc false
+  @moduledoc """
+  Low level SSE parser.
+
+  See [Usage Guide](guides/usage.livemd) for usage example.
+  """
 
   @type event :: %{
           required(:data) => binary(),
@@ -17,14 +21,49 @@ defmodule ServerSentEvents.Parser do
 
   defstruct [:phase, :key, :value, :event]
 
-  def new() do
+  @doc """
+  Initializes Parser state that can be then passed to `parse/2`
+  """
+  @spec init() :: state()
+  def init() do
     %__MODULE__{phase: :start}
   end
 
+  @doc """
+  Parses binary chunk and returns complete events and an active state
+
+  ## Examples
+
+      iex> ServerSentEvents.Parser.parse("id: 1\\nevent: message\\nretry: 5000\\ndata: hello\\n\\n")
+      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
+      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
+  """
+  @spec parse(input :: binary()) :: {[event()], state()}
   def parse(input) when is_binary(input) do
-    new() |> parse(input)
+    init() |> parse(input)
   end
 
+  @doc """
+  Parses binary chunk using existing parser state and returns complete events
+  and an updated state
+
+  ## Examples
+
+      iex> state = ServerSentEvents.Parser.init()
+      %ServerSentEvents.Parser{phase: :start, key: nil, value: nil, event: nil}
+      iex> {_, state} = ServerSentEvents.Parser.parse(state, "id: 1\\nevent: message\\n")
+      {[],
+      %ServerSentEvents.Parser{
+        phase: :field,
+        key: nil,
+        value: nil,
+        event: %{id: "1", event: "message"}
+      }}
+      iex> {_, state} = ServerSentEvents.Parser.parse(state, "retry: 5000\\ndata: hello\\n\\n")
+      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
+      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
+  """
+  @spec parse(state(), input :: binary()) :: {[event()], state()}
   def parse(%__MODULE__{phase: phase, key: key, value: value, event: event}, input)
       when is_binary(input) do
     parse(input, phase, key, value, event, [])

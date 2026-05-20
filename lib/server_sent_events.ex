@@ -23,14 +23,6 @@ defmodule ServerSentEvents do
           optional(:retry) => non_neg_integer()
         }
 
-  @opaque state :: Parser.state()
-
-  @doc """
-  Creates new parser state that can be then passed to `parse/2`
-  """
-  @spec new() :: state()
-  defdelegate new(), to: Parser
-
   @doc """
   Lazily decodes an enumerable of binary chunks into an event stream.
 
@@ -53,43 +45,8 @@ defmodule ServerSentEvents do
   """
   @spec decode_stream(Enumerable.t()) :: Enumerable.t(event())
   def decode_stream(stream) do
-    Stream.transform(stream, new(), fn chunk, state ->
+    Stream.transform(stream, Parser.init(), fn chunk, state ->
       Parser.parse(state, chunk)
     end)
   end
-
-  @doc """
-  Parses binary chunk and returns complete events and an active state
-
-  ## Examples
-
-      iex> ServerSentEvents.parse("id: 1\\nevent: message\\nretry: 5000\\ndata: hello\\n\\n")
-      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
-      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
-  """
-  @spec parse(input :: binary()) :: {[event()], state()}
-  defdelegate parse(input), to: Parser
-
-  @doc """
-  Parses binary chunk using existing parser state and returns complete events
-  and an updated state
-
-  ## Examples
-
-      iex> state = ServerSentEvents.new()
-      %ServerSentEvents.Parser{phase: :start, key: nil, value: nil, event: nil}
-      iex> {_, state} = ServerSentEvents.Parser.parse(state, "id: 1\\nevent: message\\n")
-      {[],
-      %ServerSentEvents.Parser{
-        phase: :field,
-        key: nil,
-        value: nil,
-        event: %{id: "1", event: "message"}
-      }}
-      iex> {_, state} = ServerSentEvents.parse(state, "retry: 5000\\ndata: hello\\n\\n")
-      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
-      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
-  """
-  @spec parse(state(), input :: binary()) :: {[event()], state()}
-  defdelegate parse(state, input), to: Parser
 end

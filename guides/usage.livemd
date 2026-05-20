@@ -75,8 +75,8 @@ defmodule OpenAI do
       json: Map.put(request, :stream, true),
       into: fn
         {:data, data}, {req, %{status: 200} = res} ->
-          state = Req.Request.get_private(req, :sse_state, ServerSentEvents.new())
-          {events, state} = ServerSentEvents.parse(state, data)
+          state = Req.Request.get_private(req, :sse_state, ServerSentEvents.Parser.init())
+          {events, state} = ServerSentEvents.Parser.parse(state, data)
           req = Req.Request.put_private(req, :sse_state, state)
   
           res =
@@ -103,7 +103,7 @@ defmodule OpenAI do
 end
 ```
 
-In this example we use a different Req's streaming style. Instead of setting `into: :self` and decoding a stream of incoming messages, we equip Req with 2-arity callback that is called on each chunk. In the callback, we use `ServerSentEvents.parse/2` to parse incoming chunks while maintaining parser state in request struct. For each parsed `response.output_text.delta` event, we pass it to a client-provided callback, which can, for example, send delta to a LiveView process. Finally, once we receive `response.completed` event with a complete response body, we use this body as a final request result. This is useful if the caller wants to access final response body in addition to streamed deltas.
+In this example we use a different Req's streaming style. Instead of setting `into: :self` and decoding a stream of incoming messages, we equip Req with 2-arity callback that is called on each chunk. In the callback, we use `ServerSentEvents.Parser` to parse incoming chunks while maintaining parser state in request struct. For each parsed `response.output_text.delta` event, we pass it to a client-provided callback, which can, for example, send delta to a LiveView process. Finally, once we receive `response.completed` event with a complete response body, we use this body as a final request result. This is useful if the caller wants to access final response body in addition to streamed deltas.
 
 ```elixir
 %{
