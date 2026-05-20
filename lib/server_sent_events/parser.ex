@@ -12,6 +12,13 @@ defmodule ServerSentEvents.Parser do
           event: nil | map()
         }
 
+  @type event :: %{
+          required(:data) => binary(),
+          optional(:event) => binary(),
+          optional(:id) => binary(),
+          optional(:retry) => non_neg_integer()
+        }
+
   defstruct [:phase, :key, :value, :event]
 
   @doc """
@@ -36,7 +43,7 @@ defmodule ServerSentEvents.Parser do
       {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
       %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
   """
-  @spec parse(input :: binary()) :: {[ServerSentEvents.event()], state()}
+  @spec parse(input :: binary()) :: {[event()], state()}
   def parse(input) when is_binary(input) do
     new() |> parse(input)
   end
@@ -61,7 +68,7 @@ defmodule ServerSentEvents.Parser do
       {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
       %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
   """
-  @spec parse(state(), input :: binary()) :: {[ServerSentEvents.event()], state()}
+  @spec parse(state(), input :: binary()) :: {[event()], state()}
   def parse(%__MODULE__{phase: phase, key: key, value: value, event: event}, input)
       when is_binary(input) do
     parse(input, phase, key, value, event, [])

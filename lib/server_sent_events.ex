@@ -16,12 +16,7 @@ defmodule ServerSentEvents do
 
   alias ServerSentEvents.Parser
 
-  @type event :: %{
-          required(:data) => binary(),
-          optional(:event) => binary(),
-          optional(:id) => binary(),
-          optional(:retry) => non_neg_integer()
-        }
+  @type event :: Parser.event()
 
   @doc """
   Lazily decodes an enumerable of binary chunks into an event stream.
