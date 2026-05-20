@@ -54,6 +54,21 @@ IO.inspect(events)
 # [%{event: "message", data: "{\"complete\":true}"}]
 ```
 
+
+Alternatively, you can manually parse chunks using `ServerSentEvents.Parse.parse/2`:
+
+```elixir
+state = ServerSentEvents.Parser.new()
+{events, state} = ServerSentEvents.Parser.parse(state, "event: event\ndata: {\"complete\":")
+IO.inspect(events)  # []
+
+{events, state} = ServerSentEvents.Parser.parse(state, "true}\n\nevent: event\ndata: {")
+IO.inspect(events)  # [event: "event", %{data: "{\"complete\":true}"}]
+
+{events, state} = ServerSentEvents.Parser.parse(state, "\"key\":\"value\"}\n\n")
+IO.inspect(events)  # [event: "event", %{data: "{\"key\":\"value\"}"}]
+```
+
 Events are maps that always include `:data`, and may also include `:id`, `:event`, or `:retry`.
 The `:id`, `:event`, and `:data` values are binaries. The `:retry` value is a non-negative
 integer when present.

@@ -1,6 +1,8 @@
 defmodule ServerSentEvents.ParserTest do
   use ExUnit.Case, async: true
 
+  doctest ServerSentEvents.Parser
+
   alias ServerSentEvents.Parser
 
   test "basic example" do
