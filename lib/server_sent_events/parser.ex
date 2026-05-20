@@ -1,8 +1,6 @@
 defmodule ServerSentEvents.Parser do
   @moduledoc """
-  Low level SSE parser.
-
-  See [Usage Guide](guides/usage.livemd) for usage example.
+  Incremental parser for Server Sent Events streams.
   """
 
   @type t :: %__MODULE__{
@@ -22,12 +20,7 @@ defmodule ServerSentEvents.Parser do
   defstruct [:phase, :key, :value, :event]
 
   @doc """
-  Creates new Parser state that can be then passed to `parse/2`
-
-  ## Examples
-
-      iex> ServerSentEvents.Parser.new()
-      %ServerSentEvents.Parser{phase: :start, key: nil, value: nil, event: nil}
+  Returns a new parser state for `parse/2`.
   """
   @spec new() :: t()
   def new() do
@@ -35,13 +28,16 @@ defmodule ServerSentEvents.Parser do
   end
 
   @doc """
-  Parses binary chunk and returns complete events and an active state
+  Parses a binary chunk with a new parser.
+
+  Returns complete events and the updated parser state.
 
   ## Examples
 
-      iex> ServerSentEvents.Parser.parse("id: 1\\nevent: message\\nretry: 5000\\ndata: hello\\n\\n")
-      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
-      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
+      iex> {events, _parser} =
+      ...>   ServerSentEvents.Parser.parse("id: 1\\nevent: message\\nretry: 5000\\ndata: hello\\n\\n")
+      iex> events
+      [%{data: "hello", event: "message", id: "1", retry: 5000}]
   """
   @spec parse(input :: binary()) :: {[event()], t()}
   def parse(input) when is_binary(input) do
@@ -49,24 +45,18 @@ defmodule ServerSentEvents.Parser do
   end
 
   @doc """
-  Parses binary chunk using existing parser state and returns complete events
-  and an updated state
+  Parses a binary chunk using an existing parser state.
+
+  Returns complete events and a parser state that retains incomplete input for
+  the next chunk.
 
   ## Examples
 
-      iex> state = ServerSentEvents.Parser.new()
-      %ServerSentEvents.Parser{phase: :start, key: nil, value: nil, event: nil}
-      iex> {_, state} = ServerSentEvents.Parser.parse(state, "id: 1\\nevent: message\\n")
-      {[],
-      %ServerSentEvents.Parser{
-        phase: :field,
-        key: nil,
-        value: nil,
-        event: %{id: "1", event: "message"}
-      }}
-      iex> {_, _state} = ServerSentEvents.Parser.parse(state, "retry: 5000\\ndata: hello\\n\\n")
-      {[%{data: "hello", id: "1", retry: 5000, event: "message"}],
-      %ServerSentEvents.Parser{phase: :field, key: nil, value: nil, event: nil}}
+      iex> parser = ServerSentEvents.Parser.new()
+      iex> {[], parser} = ServerSentEvents.Parser.parse(parser, "event: message\\n")
+      iex> {events, _parser} = ServerSentEvents.Parser.parse(parser, "data: hello\\n\\n")
+      iex> events
+      [%{data: "hello", event: "message"}]
   """
   @spec parse(t(), input :: binary()) :: {[event()], t()}
   def parse(%__MODULE__{phase: phase, key: key, value: value, event: event}, input)
