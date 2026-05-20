@@ -1,6 +1,8 @@
 defmodule ServerSentEvents.ParserTest do
   use ExUnit.Case, async: true
 
+  doctest ServerSentEvents.Parser
+
   alias ServerSentEvents.Parser
 
   test "basic example" do
@@ -356,12 +358,6 @@ defmodule ServerSentEvents.ParserTest do
       {[], state} = Parser.parse(state, ": this is a comment'\n")
       {[], state} = Parser.parse(state, "\n")
       {[], %Parser{}} = Parser.parse(state, "")
-    end
-  end
-
-  describe "init/0" do
-    test "creates struct in `start` phase" do
-      assert Parser.init() == %Parser{phase: :start, key: nil, value: nil, event: nil}
     end
   end
 end

@@ -75,7 +75,7 @@ defmodule OpenAI do
       json: Map.put(request, :stream, true),
       into: fn
         {:data, data}, {req, %{status: 200} = res} ->
-          state = Req.Request.get_private(req, :sse_state, ServerSentEvents.Parser.init())
+          state = Req.Request.get_private(req, :sse_state, ServerSentEvents.Parser.new())
           {events, state} = ServerSentEvents.Parser.parse(state, data)
           req = Req.Request.put_private(req, :sse_state, state)
   
